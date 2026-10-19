@@ -3,7 +3,7 @@ import { Car, Loader2, MapPin, Check, X, Send, Ban, Pencil, Hourglass } from "lu
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import AddressPicker from "./AddressPicker";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 import DirectionsButton from "./DirectionsButton";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -11,27 +11,27 @@ import { t } from "../lib/i18n";
 
 const errMsg = (e, lang) => {
   const d = e.response?.data?.detail || "";
-  const k = { ADDRESS_REQUIRED: "pu_addr_err", PICKUP_PENDING: "pu_pending_err", NO_TAXI_REQUEST: "pu_no_taxi_err", "Insufficient coins": "not_enough_coins" }[d];
+  const k = addrErrKey(d) || { ADDRESS_REQUIRED: "pu_addr_err", PICKUP_PENDING: "pu_pending_err", NO_TAXI_REQUEST: "pu_no_taxi_err", "Insufficient coins": "not_enough_coins" }[d];
   return k ? t(k, lang) : d || "Error";
 };
 
 function AddressForm({ b, onDone, onClose, lang }) {
   const pu = b.pickup || {};
-  const [loc, setLoc] = useState(pu.address ? { address: pu.address, city: pu.city, postal_code: pu.postal_code, country: pu.country, lat: pu.lat, lng: pu.lng } : {});
+  const [loc, setLoc] = useState(pu.address ? { address: pu.address, city: pu.city, postal_code: pu.postal_code, country: pu.country, lat: pu.lat, lng: pu.lng, verified: pu.lat != null, confirmed: !!pu.unverified } : {});
   const [time, setTime] = useState(pu.time || b.start);
   const [note, setNote] = useState(pu.note || "");
   const [busy, setBusy] = useState(false);
   const send = async () => {
-    if (!loc.address?.trim()) { toast.error(t("pu_addr_err", lang)); return; }
+    if (!addressReady(loc, false)) { toast.error(t("av_required_nv", lang)); return; }
     setBusy(true);
-    try { await api.post(`/vip/schedule/bookings/${b.id}/pickup/address`, { ...loc, time, note }); toast.success(t("pu_addr_sent_toast", lang)); onClose?.(); onDone?.(); }
+    try { await api.post(`/vip/schedule/bookings/${b.id}/pickup/address`, { ...addrPayload(loc), time, note }); toast.success(t("pu_addr_sent_toast", lang)); onClose?.(); onDone?.(); }
     catch (e) { toast.error(errMsg(e, lang)); }
     finally { setBusy(false); }
   };
   return (
     <div className="space-y-2.5" data-testid={`vs-pickup-form-${b.id}`}>
       <p className="text-xs text-slate-300">{t("pu_addr_intro", lang)}</p>
-      <AddressPicker value={loc} onChange={setLoc} />
+      <VerifiedAddressForm value={loc} onChange={setLoc} needVenue={false} testid={`vs-pickup-addr-${b.id}`} />
       <div className="flex gap-2">
         <div className="w-28 shrink-0">
           <label className="text-[11px] text-slate-400">{t("pu_time", lang)}</label>
@@ -43,7 +43,7 @@ function AddressForm({ b, onDone, onClose, lang }) {
         </div>
       </div>
       <div className="flex gap-2">
-        <Button data-testid={`vs-pickup-send-${b.id}`} size="sm" disabled={busy} onClick={send} className="bg-sky-600 hover:bg-sky-500 text-white border-0 h-9">
+        <Button data-testid={`vs-pickup-send-${b.id}`} size="sm" disabled={busy || !addressReady(loc, false)} onClick={send} className="bg-sky-600 hover:bg-sky-500 text-white border-0 h-9">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <><MapPin size={14} className="me-1" />{t("pu_addr_send", lang)}</>}
         </Button>
         {onClose && <Button data-testid={`vs-pickup-close-form-${b.id}`} size="sm" variant="outline" onClick={onClose} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9"><X size={14} /></Button>}

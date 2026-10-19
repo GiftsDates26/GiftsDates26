@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Calendar, Clock, Loader2, Hourglass, MapPin } from "lucide-react";
-import AddressPicker from "./AddressPicker";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 import { placeLabel } from "../lib/vipCatalog";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -81,7 +81,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
     if (!isReschedule && !agree) { toast.error(t("commit_required", lang)); return; }
     const places = data.places || [];
     if (!isReschedule && places.length && !place) { toast.error(t("vip_select_place_first", lang)); return; }
-    if (!isReschedule && place && place !== "own" && !loc.address) { toast.error(t("vip_addr_required", lang)); return; }
+    if (!isReschedule && place && place !== "own" && !addressReady(loc, false)) { toast.error(t("av_required_nv", lang)); return; }
     if (!isReschedule && ((user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error(t("not_enough_coins", lang)); return; }
     setBusy(true);
     try {
@@ -90,13 +90,13 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
         toast.success(t("bk_resched_sent", lang));
       } else {
         await api.post(`/vip/schedule/${target.id}/book`, { date: day, start: slot.start, end: slot.end, length, venue: place ? placeLabel(place, lang) : "", tz: dayObj?.tz,
-          place, ...(place && place !== "own" ? { address: loc.address || "", city: loc.city || "", postal_code: loc.postal_code || "", country: loc.country || "", lat: loc.lat ?? null, lng: loc.lng ?? null } : {}) });
+          place, ...(place && place !== "own" ? addrPayload(loc) : {}) });
         toast.success(t("bk_sent", lang));
       }
       await refreshUser(); onDone?.(); onOpenChange(false);
     } catch (e) {
       const d = e.response?.data?.detail || "";
-      toast.error(ERR[d] ? t(ERR[d], lang) : d || "Error");
+      toast.error(ERR[d] ? t(ERR[d], lang) : addrErrKey(d) ? t(addrErrKey(d), lang) : d || "Error");
       if (d === "SLOT_TAKEN") load();
     } finally { setBusy(false); }
   };
@@ -163,7 +163,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
                     ))}
                   </div>
                   {place === "own" && <p className="mt-2 text-[11px] text-sky-300 flex items-start gap-1" data-testid="vs-book-own-note"><MapPin size={11} className="mt-0.5 shrink-0" /> {t("own_addr_auto", lang)}</p>}
-                  {place && place !== "own" && <div className="mt-2.5" data-testid="vs-book-address"><AddressPicker value={loc} onChange={setLoc} /></div>}
+                  {place && place !== "own" && <div className="mt-2.5" data-testid="vs-book-address"><VerifiedAddressForm value={loc} onChange={setLoc} needVenue={false} testid="vs-book-addr" /></div>}
                 </Step>
               )}
               <div className="text-xs text-slate-400 glass rounded-lg p-3">{t(isReschedule ? "bk_resched_note" : "bk_escrow_note", lang)}</div>

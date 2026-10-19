@@ -7,7 +7,7 @@ import { api, fileUrl } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import AddressPicker from "./AddressPicker";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 import { PRICE_KEYS, svcLabel, placeLabel, priceLabel, extraLabel, extraPrice, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import ExtraHoursStepper from "./ExtraHoursStepper";
 import { t } from "../lib/i18n";
@@ -90,7 +90,7 @@ export default function VipSection({ userId, name, preview }) {
     const total = coins + extraHours * extra;
     if (!agree) { toast.error(t("commit_required", lang)); return; }
     if (hasPlaces && !place) { toast.error(t("vip_select_place_first", lang)); return; }
-    if (place && place !== "own" && !loc.address) { toast.error(t("vip_addr_required", lang)); return; }
+    if (place && place !== "own" && !addressReady(loc, false)) { toast.error(t("av_required_nv", lang)); return; }
     if ((( user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error("Недостаточно монет", { action: { label: "Пополнить", onClick: () => nav("/wallet") } }); return; }
     setBusy(true);
     try {
@@ -105,6 +105,7 @@ export default function VipSection({ userId, name, preview }) {
         country: providerHosts ? "" : (loc.country || ""),
         lat: providerHosts ? null : (loc.lat ?? null),
         lng: providerHosts ? null : (loc.lng ?? null),
+        address_confirmed: !providerHosts && addrPayload(loc).address_confirmed,
         scheduled_at: `${slot.date}T${slot.from}:00`,
         coins,
         extra_hours: extraHours,
@@ -113,7 +114,7 @@ export default function VipSection({ userId, name, preview }) {
       toast.success(t("vip_booked_toast", lang));
       setSlot(null); setPlace(null); setLoc({}); setExtraHours(0);
       await refreshUser();
-    } catch (e) { toast.error(e.response?.data?.detail || "Ошибка"); } finally { setBusy(false); }
+    } catch (e) { const d = e.response?.data?.detail; toast.error(addrErrKey(d) ? t(addrErrKey(d), lang) : d || "Ошибка"); } finally { setBusy(false); }
   };
 
   return (
@@ -218,7 +219,7 @@ export default function VipSection({ userId, name, preview }) {
               {place && place !== "own" && (
                 <div className="mt-2" data-testid="vip-book-address">
                   <div className="text-[11px] text-slate-400 mb-1">{t("vip_addr_hint", lang)}</div>
-                  <AddressPicker value={loc} onChange={setLoc} />
+                  <VerifiedAddressForm value={loc} onChange={setLoc} needVenue={false} testid="vip-book-addr" />
                 </div>
               )}
               {place === "own" && <div className="mt-2 text-[11px] text-sky-300 flex items-start gap-1"><Calendar size={11} className="mt-0.5 shrink-0" /> {t("own_addr_auto", lang)}</div>}

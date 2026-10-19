@@ -17,7 +17,7 @@ import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "../components/DateReportForm";
 import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
-import VerifiedAddressForm, { addressReady, addrErrKey } from "../components/VerifiedAddressForm";
+import VerifiedAddressForm, { addressReady, addrErrKey, addrPayload, UnverifiedNote } from "../components/VerifiedAddressForm";
 import DatesToday from "../components/DatesToday";
 import DatesEarnings from "../components/DatesEarnings";
 import CancelPreviewDialog from "../components/CancelPreviewDialog";
@@ -198,10 +198,10 @@ function DateCard({ d, reload }) {
           <p className="text-xs text-slate-400 mt-0.5" data-testid={`date-next-${d.id}`}>➜ {stepText()}</p>
           {d.chosen_idea && <div className="text-sm text-rose-200 mt-1"><CalendarHeart size={13} className="inline me-1" />{d.chosen_idea.name}</div>}
           {!d.chosen_idea && d.options && <div className="text-xs text-slate-300 mt-1">{tr("id_options")}: {d.options.map(o => o.name).join(" · ")}</div>}
-          {d.location?.venue && <div className="text-xs text-slate-400 mt-1"><MapPin size={12} className="inline me-1" />{[d.location.venue, d.location.address, d.location.city].filter(Boolean).join(", ")} <MapsLink loc={d.location} testid={`date-maps-${d.id}`} /></div>}
+          {d.location?.venue && <div className="text-xs text-slate-400 mt-1"><MapPin size={12} className="inline me-1" />{[d.location.venue, d.location.address, d.location.city].filter(Boolean).join(", ")} <MapsLink loc={d.location} testid={`date-maps-${d.id}`} /><UnverifiedNote show={d.location?.unverified} testid={`date-loc-unverified-${d.id}`} /></div>}
           {!isInv && (d.location?.scheduled_start || d.proposed_start) ? <DateTimeRange id={d.id} start={d.location?.scheduled_start || d.proposed_start} />
             : d.location?.scheduled_start && <div className="text-xs text-slate-400"><Clock size={12} className="inline me-1" />{new Date(d.location.scheduled_start).toLocaleString()} (3h)</div>}
-          {d.transportation?.status && <div className="text-xs text-sky-300 mt-0.5"><Car size={12} className="inline me-1" />{d.transportation.type}: {d.transportation.status}{d.transportation.taxi_amount ? ` · 🪙${d.transportation.taxi_amount}` : ""}{d.transportation.pickup_address ? ` · ${d.transportation.pickup_address}` : ""}</div>}
+          {d.transportation?.status && <div className="text-xs text-sky-300 mt-0.5"><Car size={12} className="inline me-1" />{d.transportation.type}: {d.transportation.status}{d.transportation.taxi_amount ? ` · 🪙${d.transportation.taxi_amount}` : ""}{d.transportation.pickup_address ? ` · ${d.transportation.pickup_address}` : ""}<UnverifiedNote show={d.transportation?.pickup_unverified} testid={`date-pickup-unverified-${d.id}`} /></div>}
           <div className="text-xs text-amber-300/90 mt-0.5"><Coins size={12} className="inline me-1" />🪙 {d.total_hold || d.coins}{d.gift ? ` + ${tr("id_gift")} ${d.gift.icon || ""}` : ""}</div>
           {reportOpen && <div className="text-[11px] mt-1"><Countdown to={w.report_close} label={tr("id_report_closes")} /></div>}
         </div>
@@ -241,7 +241,7 @@ function DateCard({ d, reload }) {
               </div>
             )}
             <VerifiedAddressForm value={loc} onChange={setLoc} testid={`date-location-addr-${d.id}`} />
-            <Button data-testid={`date-location-submit-${d.id}`} disabled={busy || !addressReady(loc)} onClick={() => act(() => post("/location", { venue: loc.venue, address: loc.address, city: loc.city, country: loc.country, postal_code: loc.postal_code, lat: loc.lat, lng: loc.lng }))} className="rose-btn text-white border-0 h-9">{tr("id_propose_location")}</Button>
+            <Button data-testid={`date-location-submit-${d.id}`} disabled={busy || !addressReady(loc)} onClick={() => act(() => post("/location", { venue: loc.venue, ...addrPayload(loc) }))} className="rose-btn text-white border-0 h-9">{tr("id_propose_location")}</Button>
           </div>
         )}
         {d.status === "LOCATION_PROPOSED" && !isInv && (
@@ -282,8 +282,7 @@ function DateCard({ d, reload }) {
             <div className="flex flex-wrap gap-2">
               <Button data-testid={`date-pickup-submit-${d.id}`} disabled={busy || !addressReady(pickup)} onClick={() => act(() => post("/pickup/address", {
                 pickup_address: [pickup.venue, pickup.address, pickup.city, pickup.postal_code, pickup.country].filter(Boolean).join(", "),
-                venue: pickup.venue, street: pickup.address,
-                lat: pickup.lat, lng: pickup.lng, city: pickup.city, country: pickup.country, postal_code: pickup.postal_code,
+                venue: pickup.venue, street: pickup.address, ...addrPayload(pickup),
               }))} className="rose-btn text-white border-0 h-9"><Check size={14} className="me-1" />{tr("id_accept_share_pickup")}</Button>
               <Button data-testid={`date-pickup-reject-${d.id}`} disabled={busy} onClick={rejectPickup} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300"><X size={14} className="me-1" />{tr("id_reject_date")}</Button>
             </div>

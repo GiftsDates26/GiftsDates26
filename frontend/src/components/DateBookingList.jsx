@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { CalendarHeart, Camera, Clock, Check, X, Car, Info, Coins, Flag } from "lucide-react";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "./DateReportForm";
 import { MapsLink } from "./AddressPicker";
-import AddressPicker from "./AddressPicker";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import AddToCalendar from "./AddToCalendar";
 import ExtendDateButton from "./ExtendDateButton";
 import CancelPreviewDialog from "./CancelPreviewDialog";
@@ -115,10 +115,10 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   };
 
   const shareMeet = async (id) => {
-    if (!meetLoc.address) { toast.error(t("search_address", lang)); return; }
+    if (!addressReady(meetLoc, false)) { toast.error(t("av_required_nv", lang)); return; }
     setBusyId(id);
-    try { await api.post(`/dates/meet-location/${id}`, { address: meetLoc.address, city: meetLoc.city || "", postal_code: meetLoc.postal_code || "", country: meetLoc.country || "", lat: meetLoc.lat ?? null, lng: meetLoc.lng ?? null }); await load(); toast.success(t("meet_location_shared_toast", lang)); setMeetFor(null); setMeetLoc({}); }
-    catch (e) { toast.error(e.response?.data?.detail || t("failed", lang)); }
+    try { await api.post(`/dates/meet-location/${id}`, addrPayload(meetLoc)); await load(); toast.success(t("meet_location_shared_toast", lang)); setMeetFor(null); setMeetLoc({}); }
+    catch (e) { const d = e.response?.data?.detail; toast.error(addrErrKey(d) ? t(addrErrKey(d), lang) : d || t("failed", lang)); }
     finally { setBusyId(null); }
   };
 
@@ -152,7 +152,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
         <div className="flex items-center gap-2 mb-1"><CalendarHeart size={14} className="text-rose-400"/><span className="font-serif-luxe text-lg">{b.venue}</span></div>
         <div className="text-xs text-slate-400 flex items-center gap-2"><Clock size={11}/> {b.vip ? <VipTimeRange b={b} lang={lang} /> : new Date(b.scheduled_at).toLocaleString()} · {b.city}</div>
         {(b.address || b.lat || b.postal_code) && <div className="text-xs text-slate-400 mt-0.5">{[b.address, b.postal_code, b.country].filter(Boolean).join(" · ")} <MapsLink loc={b} testid={`date-maps-link-${b.id}`} /></div>}
-        {b.meet?.address && <div className="text-xs text-emerald-300 mt-0.5" data-testid={`meet-location-${b.id}`}>📍 {t("meet_location", lang)}: {[b.meet.address, b.meet.postal_code, b.meet.country].filter(Boolean).join(" · ")} <MapsLink loc={{ ...b.meet, venue: b.venue }} testid={`meet-maps-link-${b.id}`} /></div>}
+        {b.meet?.address && <div className="text-xs text-emerald-300 mt-0.5" data-testid={`meet-location-${b.id}`}>📍 {t("meet_location", lang)}: {[b.meet.address, b.meet.postal_code, b.meet.country].filter(Boolean).join(" · ")} <MapsLink loc={{ ...b.meet, venue: b.venue }} testid={`meet-maps-link-${b.id}`} /><UnverifiedNote show={b.meet?.unverified} testid={`meet-unverified-${b.id}`} /></div>}
         <div className="mt-1 flex items-center gap-2 flex-wrap">
           <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLOR[b.status]}`}>{t(STATUS_MAP[b.status], lang)}</span>
           {["accepted", "confirmed"].includes(b.status) && <CountdownBadge to={b.scheduled_at} testid={`date-countdown-${b.id}`} />}
@@ -211,9 +211,9 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
             {meetFor === b.id ? (
               <div className="space-y-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
                 <div className="text-[11px] text-emerald-200">{t("share_meet_location", lang)}</div>
-                <AddressPicker value={meetLoc} onChange={setMeetLoc} />
+                <VerifiedAddressForm value={meetLoc} onChange={setMeetLoc} needVenue={false} testid={`meet-addr-${b.id}`} />
                 <div className="flex gap-2">
-                  <Button data-testid={`meet-share-submit-${b.id}`} size="sm" disabled={busyId===b.id} onClick={() => shareMeet(b.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 h-8">{t("send", lang)}</Button>
+                  <Button data-testid={`meet-share-submit-${b.id}`} size="sm" disabled={busyId===b.id || !addressReady(meetLoc, false)} onClick={() => shareMeet(b.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 h-8">{t("send", lang)}</Button>
                   <Button size="sm" variant="ghost" onClick={() => { setMeetFor(null); setMeetLoc({}); }} className="text-slate-400 h-8">{t("cancel", lang)}</Button>
                 </div>
               </div>

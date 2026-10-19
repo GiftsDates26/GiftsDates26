@@ -12,13 +12,11 @@ import { t } from "../lib/i18n";
 import { toKey, fromKey, minHm, dayWins, openDayKeys, bestDayKeys } from "../lib/availability";
 import TimeChooser from "./TimeChooser";
 import AvailabilityOverview from "./AvailabilityOverview";
-import AddressPicker from "./AddressPicker";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 
 export default function DateBookingModal({ open, onOpenChange, target }) {
   const { user, meta, lang, refreshUser } = useApp();
-  const [venue, setVenue] = useState("");
-  const [city, setCity] = useState(target?.city || "");
-  const [loc, setLoc] = useState({ address: "", postal_code: "", country: target?.country || "", lat: null, lng: null });
+  const [loc, setLoc] = useState({ venue: "", address: "", city: target?.city || "", postal_code: "", country: target?.country || "", lat: null, lng: null });
   const [day, setDay] = useState(null);
   const [start, setStart] = useState(null);
   const [coins, setCoins] = useState(target?.date_price || meta?.date_min_coins || 300);
@@ -28,7 +26,7 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
   const [agree, setAgree] = useState(false);
 
   useEffect(() => {
-    setCity(target?.city || ""); setLoc({ address: "", postal_code: "", country: target?.country || "", lat: null, lng: null }); setCoins(target?.date_price || meta?.date_min_coins || 300); setDay(null); setActivities(["", "", ""]);
+    setLoc({ venue: "", address: "", city: target?.city || "", postal_code: "", country: target?.country || "", lat: null, lng: null }); setCoins(target?.date_price || meta?.date_min_coins || 300); setDay(null); setActivities(["", "", ""]);
     if (open && target?.id) api.get(`/profiles/${target.id}/availability`).then(r => setAvail(r.data)).catch(() => {});
   }, [target, meta, open]);
 
@@ -44,14 +42,14 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
   };
 
   const submit = async () => {
-    if (!venue || !timeOk) { toast.error(t("fill_all", lang)); return; }
+    if (!addressReady(loc) || !timeOk) { toast.error(t(addressReady(loc) ? "fill_all" : "av_required", lang)); return; }
     const acts = activities.map(a => a.trim());
     if (acts.some(a => !a)) { toast.error(t("activities_required_err", lang)); return; }
     if (user.coins < coins) { toast.error(t("not_enough_coins", lang)); return; }
     setBusy(true);
     try {
       const dt = fromKey(day); dt.setHours(0, start, 0, 0);
-      await api.post("/dates/book", { target_id: target.id, venue, city, scheduled_at: dt.toISOString(), coins, local_time: minHm(start), local_day: day, address: loc.address, postal_code: loc.postal_code, country: loc.country, lat: loc.lat, lng: loc.lng, activities: acts });
+      await api.post("/dates/book", { target_id: target.id, venue: loc.venue, ...addrPayload(loc), scheduled_at: dt.toISOString(), coins, local_time: minHm(start), local_day: day, activities: acts });
       await refreshUser();
       toast.success(t("date_booked", lang));
       onOpenChange(false);
@@ -65,6 +63,7 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
         : d.startsWith("SLOT_LOCKED:") ? t("iv_slot_locked_err", lang)
         : d.startsWith("SLOT_BUSY:") ? t("slot_busy_err", lang).replace("{w}", d.split(":").slice(1).join(":"))
         : d.startsWith("TIME_UNAVAILABLE:") ? t("time_unavailable_err", lang).replace("{w}", d.split(":").slice(1).join(":"))
+        : addrErrKey(d) ? t(addrErrKey(d), lang)
         : d || t("failed", lang));
     } finally { setBusy(false); }
   };
@@ -97,18 +96,8 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
             </div>
           </div>
           <div className="space-y-3">
-            <div><Label className="text-xs text-slate-400">{t("venue", lang)}</Label>
-              <Input data-testid="date-venue-input" value={venue} onChange={e => setVenue(e.target.value)} placeholder="Le Bernardin" className="bg-white/5 border-white/10 mt-1" /></div>
-            <div><Label className="text-xs text-slate-400">{t("address", lang)}</Label>
-              <div className="mt-1"><AddressPicker testid="date-address" manualFields={false} value={loc} onChange={(l) => { setLoc({ ...loc, ...l }); if (l.city) setCity(l.city); if (!venue && l.venue) setVenue(l.venue); }} /></div></div>
-            <div className="grid grid-cols-3 gap-2">
-              <div><Label className="text-xs text-slate-400">{t("city", lang)}</Label>
-                <Input data-testid="date-city-input" value={city} onChange={e => setCity(e.target.value)} className="bg-white/5 border-white/10 mt-1" /></div>
-              <div><Label className="text-xs text-slate-400">{t("postal_code", lang)}</Label>
-                <Input data-testid="date-postal-input" value={loc.postal_code} onChange={e => setLoc({ ...loc, postal_code: e.target.value })} className="bg-white/5 border-white/10 mt-1" /></div>
-              <div><Label className="text-xs text-slate-400">{t("country", lang)}</Label>
-                <Input data-testid="date-country-input" value={loc.country} onChange={e => setLoc({ ...loc, country: e.target.value })} className="bg-white/5 border-white/10 mt-1" /></div>
-            </div>
+            <div><Label className="text-xs text-slate-400">{t("venue", lang)} · {t("address", lang)}</Label>
+              <div className="mt-1"><VerifiedAddressForm value={loc} onChange={setLoc} testid="date-book-addr" /></div></div>
             <div>
               <Label className="text-xs text-slate-400">{t("when", lang)}</Label>
               <div data-testid="date-selected-day" className="mt-1 h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-sm font-mono-num">{day || "—"}</div>
