@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { TrendingUp, CalendarHeart, Crown, KeyRound } from "lucide-react";
+import { TrendingUp, CalendarHeart, Crown, KeyRound, Gift } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
@@ -9,6 +9,7 @@ const PARTS = [
   ["regular", "te_regular", CalendarHeart, "text-rose-300"],
   ["vip", "te_vip", Crown, "text-amber-300"],
   ["unlocks", "te_unlocks", KeyRound, "text-violet-300"],
+  ["gifts", "te_gifts", Gift, "text-pink-300"],
 ];
 
 export default function TotalEarnings() {

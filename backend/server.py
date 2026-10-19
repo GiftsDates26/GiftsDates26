@@ -5588,11 +5588,15 @@ async def earnings_total(user=Depends(get_current_user)):
         if k in unl: unl[k] += int(tx.get("amount") or 0)
     rb = {x["month"]: x["earned"] for x in reg["by_month"]}
     vb = {x["month"]: x["earned"] for x in vip["by_month"]}
-    by_month = [{"month": k, "earned": rb.get(k, 0) + vb.get(k, 0) + unl[k]} for k in months]
+    gifts = {k: 0 for k in months}
+    async for tx in db.transactions.find({"type": "gift", "to_id": user["id"], "gift_id": {"$ne": "taxi"}, "created_at": {"$gte": months[0]}}, {"_id": 0, "net": 1, "created_at": 1}):
+        k = str(tx.get("created_at") or "")[:7]
+        if k in gifts: gifts[k] += int(tx.get("net") or 0)
+    by_month = [{"month": k, "earned": rb.get(k, 0) + vb.get(k, 0) + unl[k] + gifts[k]} for k in months]
     cur = months[-1]
     return {"month": cur, "earned": by_month[-1]["earned"], "held": reg["held"] + vip["held"],
             "six_month_total": sum(x["earned"] for x in by_month),
-            "breakdown": {"regular": rb.get(cur, 0), "vip": vb.get(cur, 0), "unlocks": unl[cur]},
+            "breakdown": {"regular": rb.get(cur, 0), "vip": vb.get(cur, 0), "unlocks": unl[cur], "gifts": gifts[cur]},
             "by_month": by_month}
 
 @api.get("/invites")
