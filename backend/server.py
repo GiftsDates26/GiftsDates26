@@ -5576,7 +5576,7 @@ async def invite_pickup_switch_to_taxi(did: str, user=Depends(get_current_user))
     tr = d.get("transportation") or {}
     if d["status"] != "DATE_CONFIRMED" or tr.get("type") != "pickup": raise HTTPException(400, "Only a confirmed pickup can be switched to a taxi")
     start = _pdt((d.get("location") or {}).get("scheduled_start"))
-    if start and _now() >= start - timedelta(minutes=30): raise HTTPException(400, "LOCKED")
+    if start and _now() >= start: raise HTTPException(400, "LOCKED")  # allowed right up to the start time
     amount = int(tr.get("taxi_amount") or 0)
     if amount <= 0: raise HTTPException(400, "No taxi fee was requested for this date")
     if ((user.get("coins") or 0) + (user.get("withdrawable") or 0)) < amount: raise HTTPException(400, "Insufficient coins")

@@ -89,7 +89,7 @@ function SwitchToTaxi({ d, busy, onSend }) {
   return (
     <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2" data-testid={`date-switch-taxi-panel-${d.id}`}>
       <div className="text-xs text-amber-100">{tr("sw_hint", { n })}</div>
-      <Button data-testid={`date-switch-taxi-${d.id}`} disabled={busy} onClick={() => window.confirm(tr("sw_confirm", { n })) && onSend()} variant="outline" className="h-9 bg-amber-500/10 border-amber-500/40 text-amber-200 hover:bg-amber-500/20"><Car size={14} className="me-1" />{tr("sw_btn")} 🪙{n}</Button>
+      <Button data-testid={`date-switch-taxi-${d.id}`} disabled={busy} onClick={() => window.confirm(tr("sw_confirm", { n })) && onSend()} variant="outline" className="h-9 bg-amber-500/10 border-amber-500/40 text-amber-200 hover:bg-amber-500/20"><Car size={14} className="me-1" />{tr("id_pay_taxi_instead")}<span className="ms-1 font-mono-num text-amber-300" data-testid={`date-switch-taxi-amount-${d.id}`}>🪙{n}</span></Button>
     </div>
   );
 }
@@ -305,7 +305,7 @@ function DateCard({ d, reload }) {
             </div>
           </div>
         )}
-        {d.status === "DATE_CONFIRMED" && isInv && d.transportation?.type === "pickup" && !cancelLocked && <SwitchToTaxi d={d} busy={busy} onSend={() => act(async () => { const r = await post("/pickup/switch-to-taxi"); toast.success(tr("sw_sent_toast", { n: r.data.taxi_amount })); })} />}
+        {d.status === "DATE_CONFIRMED" && isInv && d.transportation?.type === "pickup" && Date.now() < new Date(d.location?.scheduled_start || 0).getTime() && <SwitchToTaxi d={d} busy={busy} onSend={() => act(async () => { const r = await post("/pickup/switch-to-taxi"); toast.success(tr("sw_sent_toast", { n: r.data.taxi_amount })); })} />}
         {!TERMINAL.includes(d.status) && d.status !== "PHOTO_VERIFICATION_PENDING" && !(d.status === "INVITATION_SENT" && !isInv) && !started && (
           <Button data-testid={`date-cancel-${d.id}`} disabled={busy} onClick={cancelDate} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1" />{tr("id_cancel_date")}</Button>
         )}
