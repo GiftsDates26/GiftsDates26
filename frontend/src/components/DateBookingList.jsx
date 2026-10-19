@@ -17,7 +17,7 @@ import DirectionsButton from "./DirectionsButton";
 import { SectionTitle, EmptyLine } from "./DatesUI";
 import CountdownBadge from "./CountdownBadge";
 import LiveLocation from "./LiveLocation";
-import { matchesFilter } from "../lib/dateFilters";
+import { matchesFilter, tabOf } from "../lib/dateFilters";
 
 const vipEnd = (b) => new Date(new Date(b.scheduled_at).getTime() + (b.duration_min || 150) * 60000);
 const hm = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -34,7 +34,7 @@ const STATUS_COLOR = { escrow: "bg-amber-500/15 text-amber-300 border-amber-500/
  * mode="regular" → shows only non-VIP bookings (standard dates).
  * mode="vip"     → shows only VIP bookings (booked via a member's VIP section).
  */
-export default function DateBookingList({ mode = "regular", onItems, filter = "all" }) {
+export default function DateBookingList({ mode = "regular", onItems, filter = "all", tab }) {
   const { lang, refreshUser, meta, user } = useApp();
   const pct = Math.round((meta?.cancel_refund_pct ?? 0.5) * 100);
   const [data, setData] = useState({ outgoing: [], incoming: [] });
@@ -55,9 +55,9 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   const outgoing = (data.outgoing || []).filter(matches);
   const all = [...incoming.map(b => ({ b, inc: true })), ...outgoing.map(b => ({ b, inc: false }))]
     .sort((x, y) => String(x.b.scheduled_at).localeCompare(String(y.b.scheduled_at)));
-  const statusKey = all.map(x => x.b.status).join(",");
-  useEffect(() => { onItems?.(all.map(x => x.b.status)); }, [statusKey]); // eslint-disable-line
-  const shown = all.filter(x => matchesFilter(x.b.status, filter));
+  const statusKey = all.map(x => `${x.b.status}:${x.inc}`).join(",");
+  useEffect(() => { onItems?.(all.map(x => ({ status: x.b.status, inc: x.inc }))); }, [statusKey]); // eslint-disable-line
+  const shown = all.filter(x => tab ? tabOf(x.b.status, x.inc) === tab : matchesFilter(x.b.status, filter));
 
   const [cancelFor, setCancelFor] = useState(null);
   const cancel = (b, isRecipient) => { const taxi = b.taxi?.status === "sent" ? (b.taxi?.coins || 0) : 0; setCancelFor({ b, isRecipient, taxi, total: b.coins + taxi }); };

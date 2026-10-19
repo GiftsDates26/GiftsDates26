@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { CalendarHeart, MapPin, Clock, Coins, ShieldAlert, Flag, Camera, Car, Check, X, MessageCircle, Send, CalendarPlus, Lock } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -11,11 +11,11 @@ import AddressPicker, { MapsLink } from "../components/AddressPicker";
 import DirectionsButton from "../components/DirectionsButton";
 import DateBookingList from "../components/DateBookingList";
 import CancelledDates from "../components/CancelledDates";
-import { SectionTitle, Stat, EmptyLine, EmptyDates, FilterBar } from "../components/DatesUI";
+import { EmptyDates, DatesStatTiles, DatesTabBar, TabEmpty } from "../components/DatesUI";
 import CountdownBadge from "../components/CountdownBadge";
 import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "../components/DateReportForm";
-import { matchesFilter, countByFilter } from "../lib/dateFilters";
+import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
 import CancelPreviewDialog from "../components/CancelPreviewDialog";
 
@@ -341,55 +341,52 @@ function DateCard({ d, reload }) {
 
 export default function InviteDates() {
   const { lang } = useApp();
-  const [data, setData] = useState({ incoming: [], outgoing: [] });
+  const [params, setParams] = useSearchParams();
+  const [data, setData] = useState(null);
   const load = useCallback(async () => { try { const r = await api.get("/invites"); setData(r.data); } catch {} }, []);
   useEffect(() => { load(); const id = setInterval(load, 20000); return () => clearInterval(id); }, [load]);
 
-  const [bookedStatuses, setBookedStatuses] = useState([]);
-  const [filter, setFilter] = useState("all");
-  const inc = data.incoming.filter(d => matchesFilter(d.status, filter));
-  const out = data.outgoing.filter(d => matchesFilter(d.status, filter));
-  const counts = countByFilter([...data.incoming, ...data.outgoing].map(d => d.status).concat(bookedStatuses));
-  const total = data.incoming.length + data.outgoing.length;
-  const nothing = total + bookedStatuses.length === 0;
-  const bookedShown = bookedStatuses.filter(s => matchesFilter(s, filter)).length;
+  const [booked, setBooked] = useState(null);
+  const urlTab = DATE_TABS.includes(params.get("tab")) ? params.get("tab") : null;
+  const [tab, setTabState] = useState(urlTab || "requests");
+  const setTab = (k) => { setTabState(k); setParams({ tab: k }, { replace: true }); };
+  const inv = data ? [...data.incoming.map(d => ({ d, inc: true })), ...data.outgoing.map(d => ({ d, inc: false }))] : [];
+  const counts = countByTab([...inv.map(x => ({ status: x.d.status, inc: x.inc })), ...(booked || [])]);
+  const picked = useRef(!!urlTab);
+  useEffect(() => {
+    if (picked.current || !data || !booked) return;
+    picked.current = true;
+    if (!counts.requests) { const first = DATE_TABS.find(k => counts[k]); if (first) setTabState(first); }
+  }, [data, booked]); // eslint-disable-line
+  const nothing = data && booked && inv.length + booked.length === 0;
+  const shown = inv.filter(x => tabOf(x.d.status, x.inc) === tab)
+    .sort((a, b) => String(b.d.created_at || "").localeCompare(String(a.d.created_at || "")));
+  const bookedShown = (booked || []).filter(x => tabOf(x.status, x.inc) === tab).length;
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10" data-testid="dates-page">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
-        <div>
-          <h1 className="font-serif-luxe text-4xl sm:text-5xl flex items-center gap-3"><CalendarHeart className="text-rose-400" size={30} /> {t("dates", lang)}</h1>
-          <p className="text-sm text-slate-400 mt-2">{t("dates_page_sub", lang)}</p>
-        </div>
-        <div className="flex gap-3" data-testid="dates-stats">
-          <Stat label={t("id_incoming", lang)} value={data.incoming.length} />
-          <Stat label={t("id_outgoing", lang)} value={data.outgoing.length} />
-        </div>
+      <header className="mb-6">
+        <h1 className="font-serif-luxe text-4xl sm:text-5xl flex items-center gap-3"><CalendarHeart className="text-rose-400" size={30} /> {t("dates", lang)}</h1>
+        <p className="text-sm text-slate-400 mt-2">{t("dates_page_sub", lang)}</p>
       </header>
 
-      {nothing ? <EmptyDates /> : <FilterBar value={filter} onChange={setFilter} counts={counts} />}
-      {!nothing && inc.length + out.length + bookedShown === 0 && <EmptyLine text={t("df_no_match", lang)} />}
-
-      {inc.length + out.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-8">
-          <section data-testid="incoming-dates">
-            <SectionTitle label={t("id_incoming", lang)} count={inc.length} />
-            <div className="space-y-3">
-              {inc.map(d => <DateCard key={d.id} d={d} reload={load} />)}
-              {!inc.length && <EmptyLine text={t(filter === "all" ? "id_no_incoming" : "df_no_match", lang)} />}
-            </div>
-          </section>
-          <section data-testid="outgoing-dates">
-            <SectionTitle label={t("id_outgoing", lang)} count={out.length} />
-            <div className="space-y-3">
-              {out.map(d => <DateCard key={d.id} d={d} reload={load} />)}
-              {!out.length && <EmptyLine text={t(filter === "all" ? "id_no_outgoing" : "df_no_match", lang)} />}
-            </div>
-          </section>
+      {nothing ? <EmptyDates /> : <>
+        <DatesStatTiles value={tab} onChange={setTab} counts={counts} />
+        <DatesTabBar value={tab} onChange={setTab} counts={counts} />
+        <div className="mt-6 space-y-6" data-testid={`dates-panel-${tab}`} key={tab}>
+          <p className="text-xs text-slate-500">{t(`dp_hint_${tab}`, lang)}</p>
+          {shown.length > 0 && <div className="space-y-3">
+            {shown.map(({ d, inc }) => (
+              <div key={d.id} className="relative">
+                <span className="absolute -top-2 start-4 z-10 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#0D0B12] border border-white/10 text-slate-400" data-testid={`date-dir-${d.id}`}>{t(inc ? "tag_invited_you" : "tag_you_booked", lang)}</span>
+                <DateCard d={d} reload={load} />
+              </div>
+            ))}
+          </div>}
+          <DateBookingList mode="regular" onItems={setBooked} tab={tab} />
+          {data && booked && shown.length + bookedShown === 0 && <TabEmpty tab={tab} />}
+          {tab === "cancelled" && <CancelledDates />}
         </div>
-      )}
-
-      <div className={inc.length + out.length ? "mt-10" : ""}><DateBookingList mode="regular" onItems={setBookedStatuses} filter={filter} /></div>
-      <CancelledDates />
+      </>}
     </div>
   );
 }

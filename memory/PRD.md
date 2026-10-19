@@ -70,3 +70,4 @@ React (CRA/craco) + FastAPI (server.py, ~4.9k lines) + MongoDB. JWT email/passwo
 - Re-imported from https://github.com/Giftsdates25/Giftsdates25 as-is (all code, styling, assets). Env re-provisioned: JWT_SECRET, EMERGENT_LLM_KEY, ADMIN_EMAILS, new Stripe claimable sandbox acct_1UR1hhAtwb0iGHrY (CA, test mode).
 - Admin giftsdates@gmail.com + test user created (test_credentials.md). iteration_26: backend 16/16, frontend pass, real test payment credited coins.
 - Not configured: email (Resend), Twilio SMS, Google Maps key. Old users/data live in the old database (not in repo).
+- Dates page panel (2026-06): InviteDates.jsx now has clickable stat tiles + sticky pill tabs (Requests · My Requests · Confirmed · Cancelled & refused · Past) with counts, per-tab hint/empty state, ?tab= URL param, auto-opens first non-empty tab. Logic: lib/dateFilters.js tabOf/countByTab; DateBookingList accepts `tab` prop. Demo seed: backend/tests/seed_dates_demo.py.

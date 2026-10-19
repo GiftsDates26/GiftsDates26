@@ -7,6 +7,17 @@ const GROUPS = {
   cancelled: ["CANCELLED", "CANCELLED_TRANSPORTATION", "REFUNDED", "cancelled", "declined"],
 };
 
+export const DATE_TABS = ["requests", "mine", "confirmed", "cancelled", "past"];
+const PAST_EXTRA = ["REPORTED", "UNDER_ADMIN_REVIEW"];
+export const tabOf = (status, incoming) => {
+  if (GROUPS.cancelled.includes(status)) return "cancelled";
+  if (GROUPS.completed.includes(status) || PAST_EXTRA.includes(status)) return "past";
+  if (GROUPS.confirmed.includes(status)) return "confirmed";
+  return incoming ? "requests" : "mine";
+};
+export const countByTab = (items) =>
+  Object.fromEntries(DATE_TABS.map(k => [k, items.filter(x => tabOf(x.status, x.inc) === k).length]));
+
 export const matchesFilter = (status, f) => f === "all" || (GROUPS[f] || []).includes(status);
 export const countByFilter = (statuses) =>
   Object.fromEntries(DATE_FILTERS.map(f => [f, statuses.filter(s => matchesFilter(s, f)).length]));
