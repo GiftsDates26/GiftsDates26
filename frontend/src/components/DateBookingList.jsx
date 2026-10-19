@@ -262,7 +262,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
             <Button data-testid={`date-decline-btn-${b.id}`} disabled={busyId===b.id} onClick={() => respond(b.id, false)} variant="outline" className="bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1"/> {t("decline", lang)}</Button>
           </>
         )}
-        {isIncoming && (b.status === "accepted" || (b.status === "confirmed" && !b.photo_url)) && (() => {
+        {isIncoming && !underReview && (b.status === "accepted" || (b.status === "confirmed" && !b.photo_url)) && (() => {
           const sched = new Date(b.scheduled_at), nowD = new Date();
           const metStarted = nowD >= sched;
           const after24 = nowD >= new Date(sched.getTime() + 24 * 3600 * 1000);

@@ -1,0 +1,54 @@
+{
+  "summary": "Tested the 'no automatic cancel/refund on report + 24h reply window + admin decides' feature across invite dates, booked dates and VIP no-show (backend pytest with seeded Mongo docs + Playwright UI for both parties and admin). Booked dates, VIP no-show, window alerts and all UI pieces work. Invite dates have 2 CRITICAL backend bugs: (1) admin refund_inviter/split/reporter_wins(->refund) leaves date status REPORTED, which allows a SECOND resolve that pays the recipient too (double settlement); (2) a party can still call POST /invites/{id}/cancel on a REPORTED date, which moves coins with no admin decision.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/admin/dates/{id}/resolve (refund_inviter | split | reporter_wins/other_wins mapping to refund)", "issue": "_refund(d, mode, status) ignores its status argument and admin_resolve never calls _log_status after refunding, so d.status stays 'REPORTED' (expected REFUNDED). The 'already settled' guard only checks status, so a 2nd call with action=payout_recipient returns 200 and _complete() credits the recipient's withdrawable with the full hold (paid_out isn't set by refund). Reproduced: hold 70 -> inviter refunded 70 AND recipient got +70.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/invites/{id}/cancel", "issue": "No check for an open report. While status=REPORTED (not in the closed list, and the LOCKED check only covers DATE_CONFIRMED), the recipient can cancel and the inviter gets a full refund (or the inviter cancels -> split). Reproduced: 200 {status: CANCELLED}, inviter coins +200, no admin involved. The booked-date cancel already returns 400 UNDER_REVIEW here, so invite cancel should do the same.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/invites/{id}/report", "issue": "Date status isn't checked. A COMPLETED/CANCELLED/REFUNDED date can still be reported inside the start..+3h window, which sets its status to REPORTED and overwrites the final status."},
+      {"endpoint": "POST /api/admin/dates/{id}/resolve", "issue": "There is no 'dismiss' action for invite dates (booked dates have one). An admin who wants the date to just carry on can't close the report without moving coins, so the date stays REPORTED."},
+      {"endpoint": "GET /api/dates/my (booked dates)", "issue": "Returns the raw report object, including the reporter's evidence text and photo paths, to the reported person. Invite dates use the _report_view sanitiser, booked dates don't. The photo files themselves are private, but the paths and evidence text leak."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "VipBookings", "issue": "Incoming tabs (Confirmed, where 'reported' bookings live) only render when is_vip. If the VIP's subscription lapses during the 24h window, they can't see or reply to the no-show case.", "selector": "vs-no-show-case-{id}", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dates > Under review (invite card, recipient side)", "issues": ["The old DateStartedNote still says 'if we don't get a reply, your coins will be refunded'. This is wrong for the reported recipient and contradicts the new copy.", "'Report window closes in hh:mm:ss' countdown still shows after the date has already been reported."]},
+      {"screen": "Dates > Under review (booked date)", "issues": ["'Get 50% now (no photo)' and 'Confirm with Photo' buttons are still shown while a report is open. The backend rejects release-half with UNDER_REVIEW, so the user just hits an error. Hide them while under review."]}
+    ]
+  },
+  "passed_items": [
+    "Invite report: reporter_role, status open, reply_deadline = now+24h, date status REPORTED, no coin movement; second report -> 409 ALREADY_REPORTED",
+    "Invite reply: reporter -> 403, reported -> 200; reply after deadline -> 400 REPLY_WINDOW_CLOSED",
+    "Admin resolve coin movements: reporter_wins (inviter reporter) refunds inviter 100%; reporter_wins (recipient reporter) pays recipient 100% and sets COMPLETED; other_wins / split amounts correct; report.status=resolved + outcome set; non-admin -> 403",
+    "Booked date report: reporter_role + reply_deadline; cancel by either side -> 400 UNDER_REVIEW; reply after deadline -> REPLY_WINDOW_CLOSED; release_recipient: escrow -coins, withdrawable +coins, status released; refund_booker works; duplicate -> 409",
+    "VIP no-show: status 'reported', no refund, reply_deadline set; client reply 403, short note 400, VIP reply with photo 200, duplicate 409, after deadline 400; admin valid -> client refunded, status cancelled; reversed -> VIP paid from escrow, status completed; reported booking not autocompleted after a background tick",
+    "_report_window_alerts: admin_alerted set and exactly 1 'Report ready for decision' notification",
+    "UI: dates-tab-review/tile counts, reply-deadline text + reply-open, reply hidden after deadline, reply submits (invite + booking), report-status notes for the reporter (open/replied/no reply), report-note copy by role, vs-no-show-case + VIP reply submit, admin-date-window/admin-booking-window/admin-no-show-window texts, default highlighting (Refund inviter/booker (default), Release all to invited (default) for recipient reports, Uphold & refund client (default))"
+  ],
+  "test_report_links": ["/app/backend/tests/test_report_no_auto_cancel.py", "/app/backend/tests/seed_iter30_ui.py", "/app/test_reports/pytest/iter30_results.xml"],
+  "action_items": [
+    "CRITICAL: in admin_resolve, after _refund(...) call _log_status(did, 'REFUNDED', admin_id) (or make _refund set status), and/or block resolve when d.paid_out or d.refunded is set, to prevent double settlement",
+    "HIGH: in invite_cancel, raise 400 UNDER_REVIEW when status is REPORTED/UNDER_ADMIN_REVIEW or the report is open",
+    "invite_report: only allow it for active statuses (e.g. DATE_CONFIRMED and the verification-pending statuses)",
+    "Add a 'dismiss' action for invite-date reports (restore prev_status)",
+    "Sanitise booking.report in GET /dates/my for the reported party (as _report_view does)",
+    "UI: update the DateStartedNote copy for the recipient, hide the report-window countdown once reported, hide 'Get 50% now' while under review"
+  ],
+  "critical_code_review_comments": [
+    "_refund(d, mode, status) has an unused 'status' param, which is misleading. Other callers (invite_cancel) log the status separately; admin_resolve doesn't.",
+    "admin_resolve's settled check relies only on status. Using the paid_out/refunded flags would make it idempotent.",
+    "server.py is 6000+ lines; report/VIP logic should be split into modules"
+  ],
+  "updated_files": ["/app/backend/tests/test_report_no_auto_cancel.py", "/app/backend/tests/seed_iter30_ui.py"],
+  "success_rate": {"backend": "69% (9/13 tests; 4 failures = 2 root causes)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "All seeded docs (seed:true, iter30/iter30ui) were deleted afterwards. testuser vip_until was set temporarily and then removed; escrow was restored to 0. Admin coins and testuser withdrawable went up because seeded holds were never deducted from the inviter (test money only).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_report_no_auto_cancel.py -n0 (not xdist-safe: module teardown deletes seeds). seed_iter30_ui.py seeds UI fixtures (admin = inviter/client, testuser = recipient/VIP). For the VIP UI, testuser needs vip_until in the future. In Playwright, set localStorage 'gd_token' from /api/auth/login. Admin booking resolve buttons use window.confirm, so accept the dialog (import asyncio for the handler).",
+  "rca of the issue": "Double settlement: admin_resolve -> _refund() credits the inviter and sets refunded=True but doesn't change status (status param unused), so status stays REPORTED. The settled guard (status in COMPLETED/REFUNDED/...) passes again; payout_recipient -> _complete() checks only paid_out (False) and credits the recipient. Repro: report a seeded DATE_CONFIRMED date, resolve refund_inviter, then resolve payout_recipient -> both 200. Fix: set status REFUNDED in admin_resolve and guard on refunded/paid_out. Cancel bypass: invite_cancel only blocks closed statuses and the 30-min lock for DATE_CONFIRMED, so REPORTED passes."
+}

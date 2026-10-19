@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="12" time="69.967" timestamp="2026-10-19T22:25:15.160333+00:00" hostname="agent-env-47dbbf0a-abc5-42d9-b47e-159dc6ed7f9a"><testcase classname="tests.test_report_no_auto_cancel.TestVipNoShow" name="test_no_show_reported_and_reply_and_valid" time="2.200" /><testcase classname="tests.test_report_no_auto_cancel.TestInviteReports" name="test_inviter_report_no_refund_and_duplicate" time="1.463" /><testcase classname="tests.test_report_no_auto_cancel.TestInviteReports" name="test_reply_before_and_after_deadline" time="0.774" /><testcase classname="tests.test_report_no_auto_cancel.TestVipNoShow" name="test_no_show_reply_window_closed_and_reversed" time="0.388" /><testcase classname="tests.test_report_no_auto_cancel.TestInviteReports" name="test_reported_invite_cannot_be_cancelled" time="0.278"><failure message="AssertionError: Reported date was cancelled by party: 200 {&quot;ok&quot;:true,&quot;status&quot;:&quot;CANCELLED&quot;}; status=CANCELLED admin_coins {'coins': 300, 'escrow': 0, 'withdrawable': 0}-&gt;{'coins': 500, 'escrow': 0, 'withdrawable': 0}&#10;assert 200 == 400&#10; +  where 200 = &lt;Response [200]&gt;.status_code">tests/test_report_no_auto_cancel.py:136: in test_reported_invite_cannot_be_cancelled
+    assert r.status_code == 400, f"Reported date was cancelled by party: {r.status_code} {r.text}; status={d['status']} admin_coins {before_a}-&gt;{bal(db, ids['admin'])}"
+E   AssertionError: Reported date was cancelled by party: 200 {"ok":true,"status":"CANCELLED"}; status=CANCELLED admin_coins {'coins': 300, 'escrow': 0, 'withdrawable': 0}-&gt;{'coins': 500, 'escrow': 0, 'withdrawable': 0}
+E   assert 200 == 400
+E    +  where 200 = &lt;Response [200]&gt;.status_code</failure></testcase><testcase classname="tests.test_report_no_auto_cancel.TestInviteReports" name="test_admin_reporter_wins_inviter_refund" time="0.262"><failure message="AssertionError: REPORTED&#10;assert 'REPORTED' == 'REFUNDED'&#10;  &#10;  - REFUNDED&#10;  + REPORTED">tests/test_report_no_auto_cancel.py:146: in test_admin_reporter_wins_inviter_refund
+    assert d["status"] == "REFUNDED", d["status"]
+E   AssertionError: REPORTED
+E   assert 'REPORTED' == 'REFUNDED'
+E     
+E     - REFUNDED
+E     + REPORTED</failure></testcase><testcase classname="tests.test_report_no_auto_cancel.TestVipNoShow" name="test_reported_vip_not_autocompleted" time="65.270"><failure message="TypeError: 'NoneType' object is not subscriptable">tests/test_report_no_auto_cancel.py:271: in test_reported_vip_not_autocompleted
+    assert db.vip_sched.find_one({"id": bid})["status"] == "reported"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable</failure></testcase><testcase classname="tests.test_report_no_auto_cancel.TestInviteReports" name="test_admin_reporter_wins_recipient_payout" time="0.407" /><testcase classname="tests.test_report_no_auto_cancel.TestInviteReports" name="test_admin_other_wins_and_split_and_nonadmin" time="0.397"><failure message="AssertionError: assert 'REPORTED' == 'REFUNDED'&#10;  &#10;  - REFUNDED&#10;  + REPORTED">tests/test_report_no_auto_cancel.py:171: in test_admin_other_wins_and_split_and_nonadmin
+    assert db.dates.find_one({"id": did})["status"] == "REFUNDED"
+E   AssertionError: assert 'REPORTED' == 'REFUNDED'
+E     
+E     - REFUNDED
+E     + REPORTED</failure></testcase><testcase classname="tests.test_report_no_auto_cancel.TestWindowAlerts" name="test_admin_alerted_once" time="15.309" /><testcase classname="tests.test_report_no_auto_cancel.TestBookingReports" name="test_booking_report_reply_cancel_blocked_release" time="0.769" /><testcase classname="tests.test_report_no_auto_cancel.TestBookingReports" name="test_booking_reply_ok_and_refund_booker" time="0.497" /></testsuite></testsuites>

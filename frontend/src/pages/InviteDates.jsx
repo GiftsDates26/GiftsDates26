@@ -203,7 +203,7 @@ function DateCard({ d, reload }) {
             : d.location?.scheduled_start && <div className="text-xs text-slate-400"><Clock size={12} className="inline me-1" />{new Date(d.location.scheduled_start).toLocaleString()} (3h)</div>}
           {d.transportation?.status && <div className="text-xs text-sky-300 mt-0.5"><Car size={12} className="inline me-1" />{d.transportation.type}: {d.transportation.status}{d.transportation.taxi_amount ? ` · 🪙${d.transportation.taxi_amount}` : ""}{d.transportation.pickup_address ? ` · ${d.transportation.pickup_address}` : ""}<UnverifiedNote show={d.transportation?.pickup_unverified} testid={`date-pickup-unverified-${d.id}`} /></div>}
           <div className="text-xs text-amber-300/90 mt-0.5"><Coins size={12} className="inline me-1" />🪙 {d.total_hold || d.coins}{d.gift ? ` + ${tr("id_gift")} ${d.gift.icon || ""}` : ""}</div>
-          {reportOpen && <div className="text-[11px] mt-1"><Countdown to={w.report_close} label={tr("id_report_closes")} /></div>}
+          {reportOpen && !d.report && <div className="text-[11px] mt-1"><Countdown to={w.report_close} label={tr("id_report_closes")} /></div>}
         </div>
       </div>
 
@@ -313,7 +313,7 @@ function DateCard({ d, reload }) {
           <CancelPreviewDialog open={cancelOpen} onOpenChange={setCancelOpen} total={c.total} taxi={c.taxi} split={c.split} byRequester={isInv}
             onConfirm={() => { setCancelOpen(false); act(() => post("/cancel")); }} />
         ); })()}
-        {started && !TERMINAL.includes(d.status) && <DateStartedNote id={d.id} />}
+        {started && !TERMINAL.includes(d.status) && !d.report && <DateStartedNote id={d.id} />}
         {d.report && <span className="text-[11px] px-2 py-1 rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-200 self-center" data-testid={`date-reported-${d.id}`}>{tr("rp_under_review")}</span>}
         {reportOpen && !d.report && <Button data-testid={`date-report-${d.id}`} onClick={() => setShowReport(v => !v)} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300"><Flag size={14} className="me-1" />{tr("id_report_this")}</Button>}
         {canVerify && ["DATE_CONFIRMED", "DATE_COMPLETED_PENDING_VERIFICATION"].includes(d.status) &&

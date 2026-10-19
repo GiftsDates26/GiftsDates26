@@ -42,7 +42,7 @@ export default function Admin() {
   };
   const askResolve = (d, action) => {
     const n = d.total_hold || d.coins || 0;
-    const desc = action === "payout_recipient" ? t("ad_payout_desc", lang) : action === "refund_inviter" ? t("ad_refund_desc", lang) : t("ad_split_desc", lang);
+    const desc = action === "payout_recipient" ? t("ad_payout_desc", lang) : action === "refund_inviter" ? t("ad_refund_desc", lang) : action === "dismiss" ? "Close the report without moving any coins. The date continues as before." : t("ad_split_desc", lang);
     setConfirm({ id: d.id, action, desc: desc.replace("{n}", n) });
   };
 
@@ -114,6 +114,7 @@ export default function Admin() {
                     const cls = (a) => def === a ? "bg-amber-500/15 border-amber-500/50 text-amber-100" : "bg-white/5 border-white/15";
                     return <>
                       <Button data-testid={`admin-date-payout-${d.id}`} size="sm" onClick={() => askResolve(d, "payout_recipient")} variant="outline" className={cls("payout_recipient")}>{t("ad_payout_recipient", lang)}{def === "payout_recipient" ? " (default)" : ""}</Button>
+                      {def && <Button data-testid={`admin-date-dismiss-${d.id}`} size="sm" onClick={() => askResolve(d, "dismiss")} variant="outline" className="bg-white/5 border-white/15">Dismiss report</Button>}
                       <Button data-testid={`admin-date-refund-${d.id}`} size="sm" onClick={() => askResolve(d, "refund_inviter")} variant="outline" className={cls("refund_inviter")}>{t("ad_refund_inviter", lang)}{def === "refund_inviter" ? " (default)" : ""}</Button>
                     </>; })()}
                   <Button data-testid={`admin-date-split-${d.id}`} size="sm" onClick={() => askResolve(d, "split")} variant="outline" className="bg-white/5 border-white/15">{t("ad_split", lang)}</Button>

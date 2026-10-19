@@ -2903,6 +2903,11 @@ async def list_dates(user=Depends(get_current_user)):
                     await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "platform_fee_no_photo", "from_id": user["id"], "to_id": "platform", "cost": cut, "net": cut, "created_at": now_dt.isoformat()})
     outgoing = await db.date_bookings.find({"from_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     incoming = await db.date_bookings.find({"to_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for b in outgoing + incoming:
+        r = b.get("report")
+        if r:  # parties never see the other side's evidence, photos or reply text
+            b["report"] = {k: r.get(k) for k in ("reporter_id", "reporter_role", "reasons", "details", "status", "reply_deadline", "created_at")}
+            b["report"]["reply"] = ({"at": r["reply"].get("at")} if r.get("reply") else None)
     for b in outgoing:
         if b.get("vip"):
             _hide_own_address(b, b["status"] not in ("escrow", "cancelled", "declined"))
@@ -5601,6 +5606,8 @@ async def invite_transport_refuse(did: str, user=Depends(get_current_user)):
 async def invite_cancel(did: str, user=Depends(get_current_user)):
     d = await _get_party(did, user["id"])
     if d["status"] in ("COMPLETED", "COMPLETED_AUTO", "CANCELLED", "CANCELLED_TRANSPORTATION", "REFUNDED"): raise HTTPException(400, "Already closed")
+    if d["status"] in ("REPORTED", "UNDER_ADMIN_REVIEW") or (d.get("report") and (d["report"].get("status") or "open") == "open"):
+        raise HTTPException(400, "UNDER_REVIEW")
     start = _pdt((d.get("location") or {}).get("scheduled_start"))
     if start and d["status"] in ("DATE_CONFIRMED",) and _now() >= start - timedelta(minutes=30):
         raise HTTPException(400, "LOCKED")
@@ -5623,6 +5630,7 @@ async def invite_cancel(did: str, user=Depends(get_current_user)):
 @api.post("/invites/{did}/report")
 async def invite_report(did: str, req: InviteReportReq, user=Depends(get_current_user)):
     d = await _get_party(did, user["id"])
+    if d["status"] not in ("DATE_CONFIRMED", "DATE_COMPLETED_PENDING_VERIFICATION", "PHOTO_VERIFICATION_PENDING"): raise HTTPException(400, "Report not available")
     start = _pdt((d.get("location") or {}).get("scheduled_start"))
     if not start: raise HTTPException(400, "Report not available yet")
     if not (start <= _now() <= start + timedelta(hours=DATE_WINDOW_HOURS)):
@@ -5903,15 +5911,26 @@ async def admin_resolve(did: str, action: str, user=Depends(get_current_user)):
     await _require_admin(user)
     d = await db.dates.find_one({"id": did}, {"_id": 0})
     if not d: raise HTTPException(404, "Not found")
-    if d["status"] in ("COMPLETED", "COMPLETED_AUTO", "REFUNDED", "CANCELLED", "CANCELLED_TRANSPORTATION"): raise HTTPException(400, "Coins already settled")
-    role = (d.get("report") or {}).get("reporter_role")
+    if d["status"] in ("COMPLETED", "COMPLETED_AUTO", "REFUNDED", "CANCELLED", "CANCELLED_TRANSPORTATION") or d.get("paid_out") or d.get("refunded"):
+        raise HTTPException(400, "Coins already settled")
+    rep = d.get("report") or {}
+    if action == "dismiss":  # report closed without moving coins; the date continues as before
+        if not rep: raise HTTPException(400, "No report")
+        await db.dates.update_one({"id": did}, {"$set": {"report.status": "dismissed", "report.outcome": "dismiss", "report.resolved_at": _iso(), "report.resolved_by": user["id"]}})
+        await _log_status(did, rep.get("prev_status") or "DATE_CONFIRMED", user["id"])
+        for uid in (d["inviter_id"], d["recipient_id"]):
+            await notify(uid, "date_request", "Date report closed", "Support reviewed the report and closed it. The date continues as normal.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date")
+        await db.date_admin_log.insert_one({"id": str(uuid.uuid4()), "date_id": did, "admin_id": user["id"], "action": action, "at": _iso()})
+        return {"ok": True}
+    role = rep.get("reporter_role")
     if action in ("reporter_wins", "other_wins"):
         if not role: raise HTTPException(400, "No report")
         inviter_wins = (role == "inviter") == (action == "reporter_wins")
         action = "refund_inviter" if inviter_wins else "payout_recipient"
     if action == "payout_recipient": await _complete(d, "COMPLETED")
-    elif action == "refund_inviter": await _refund(d, "full_inviter", "REFUNDED")
-    elif action == "split": await _refund(d, "split", "REFUNDED")
+    elif action in ("refund_inviter", "split"):
+        await _refund(d, "full_inviter" if action == "refund_inviter" else "split", "REFUNDED")
+        await _log_status(did, "REFUNDED", user["id"])
     else: raise HTTPException(400, "Unknown action")
     if d.get("report"):
         await db.dates.update_one({"id": did}, {"$set": {"report.status": "resolved", "report.outcome": action, "report.resolved_at": _iso(), "report.resolved_by": user["id"]}})
