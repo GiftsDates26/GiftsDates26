@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import PayoutAccountCard from "../components/PayoutAccountCard";
 import PayoutStatusTracker from "../components/PayoutStatusTracker";
 import PlanComparison from "../components/PlanComparison";
+import TotalEarnings from "../components/TotalEarnings";
 
 export default function Wallet() {
   const { user, lang, meta, refreshUser, spinEligible } = useApp();
@@ -99,6 +100,8 @@ export default function Wallet() {
           <Card icon={WalletIcon} title={t("withdrawable", lang)} value={`🪙 ${user?.withdrawable ?? 0}`} sub={`≈ $${((user?.withdrawable||0)*(1-wallet.withdraw_commission)/wallet.coins_per_usd).toFixed(2)} ${t("you_receive", lang).toLowerCase()} (−${Math.round(wallet.withdraw_commission*100)}%) · ${wallet.coins_per_usd} 🪙 = $1`} tone="emerald" testid="wallet-withdrawable-coins"/>
         </div>
         <p className="text-xs text-slate-400 -mt-4" data-testid="withdraw-only-note">{t("withdraw_only_note", lang)}</p>
+
+        <TotalEarnings />
 
         <PayoutStatusTracker account={wallet.payout_account} />
         <div id="payout-account-section" className="scroll-mt-24">

@@ -5544,27 +5544,56 @@ async def invite_send_message(did: str, req: DateMsgReq, user=Depends(get_curren
                  {"date_id": did}, email=False, link=DATES_LINK, cta="Open chat")
     return {"ok": True, "message": msg}
 
-@api.get("/dates/earnings")
-async def dates_earnings(user=Depends(get_current_user)):
-    """Coins earned from regular dates (invites + bookings) this month, last 6 months, and coins still held."""
+def _six_months():
     now = datetime.now(timezone.utc)
     months, y, m = [], now.year, now.month
     for _ in range(6):
         months.insert(0, f"{y:04d}-{m:02d}")
         y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    return months
+
+async def _regular_earnings(uid: str) -> dict:
+    months = _six_months()
     by = {k: 0 for k in months}
     def add(ts, n):
         k = str(ts or "")[:7]
         if k in by: by[k] += int(n or 0)
-    async for tx in db.coin_transactions.find({"user_id": user["id"], "type": {"$in": ["DATE_COMPLETION", "RECIPIENT_COMPENSATION"]}}, {"_id": 0, "amount": 1, "created_at": 1}):
+    async for tx in db.coin_transactions.find({"user_id": uid, "type": {"$in": ["DATE_COMPLETION", "RECIPIENT_COMPENSATION"]}}, {"_id": 0, "amount": 1, "created_at": 1}):
         add(tx.get("created_at"), tx.get("amount"))
     held = 0
-    async for d in db.date_bookings.find({"to_id": user["id"], "vip": {"$ne": True}}, {"_id": 0, "status": 1, "coins": 1, "released_net": 1, "released_at": 1, "scheduled_at": 1}):
+    async for d in db.date_bookings.find({"to_id": uid, "vip": {"$ne": True}}, {"_id": 0, "status": 1, "coins": 1, "released_net": 1, "released_at": 1, "scheduled_at": 1}):
         if d["status"] == "released": add(d.get("released_at") or d.get("scheduled_at"), d.get("released_net"))
         elif d["status"] in ("escrow", "accepted", "confirmed"): held += int(d.get("coins") or 0)
-    async for d in db.dates.find({"recipient_id": user["id"], "status": {"$in": ["DATE_CONFIRMED", "DATE_COMPLETED_PENDING_VERIFICATION", "PHOTO_VERIFICATION_PENDING"]}}, {"_id": 0, "total_hold": 1, "coins": 1}):
+    async for d in db.dates.find({"recipient_id": uid, "status": {"$in": ["DATE_CONFIRMED", "DATE_COMPLETED_PENDING_VERIFICATION", "PHOTO_VERIFICATION_PENDING"]}}, {"_id": 0, "total_hold": 1, "coins": 1}):
         held += int(d.get("total_hold") or d.get("coins") or 0)
     return {"month": months[-1], "earned": by[months[-1]], "held": held, "by_month": [{"month": k, "earned": by[k]} for k in months]}
+
+@api.get("/dates/earnings")
+async def dates_earnings(user=Depends(get_current_user)):
+    """Coins earned from regular dates (invites + bookings) this month, last 6 months, and coins still held."""
+    return await _regular_earnings(user["id"])
+
+@api.get("/earnings/total")
+async def earnings_total(user=Depends(get_current_user)):
+    """All income in one place: regular dates + VIP dates + private VIP section unlocks."""
+    reg = await _regular_earnings(user["id"])
+    vip_raw = await db.vip_sched.find({"vip_id": user["id"]}, {"_id": 0}).to_list(2000)
+    vip = await _vs_earnings(user["id"], vip_raw)
+    months = _six_months()
+    unl = {k: 0 for k in months}
+    unlock_all = 0
+    async for tx in db.coin_transactions.find({"user_id": user["id"], "type": "vip_unlock_earned"}, {"_id": 0, "amount": 1, "created_at": 1}):
+        unlock_all += int(tx.get("amount") or 0)
+        k = str(tx.get("created_at") or "")[:7]
+        if k in unl: unl[k] += int(tx.get("amount") or 0)
+    rb = {x["month"]: x["earned"] for x in reg["by_month"]}
+    vb = {x["month"]: x["earned"] for x in vip["by_month"]}
+    by_month = [{"month": k, "earned": rb.get(k, 0) + vb.get(k, 0) + unl[k]} for k in months]
+    cur = months[-1]
+    return {"month": cur, "earned": by_month[-1]["earned"], "held": reg["held"] + vip["held"],
+            "six_month_total": sum(x["earned"] for x in by_month),
+            "breakdown": {"regular": rb.get(cur, 0), "vip": vb.get(cur, 0), "unlocks": unl[cur]},
+            "by_month": by_month}
 
 @api.get("/invites")
 async def list_invites(user=Depends(get_current_user)):
