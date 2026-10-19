@@ -1,0 +1,22 @@
+{
+  "summary": "Frontend-only testing of the two new features: (1) Weekly schedule 'Copy to all days' button, and (2) Add-to-calendar dropdown on Dates and InviteDates. Both features work end-to-end with no console/page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AddToCalendar: default end = start + 150min only when end is not provided. DateBookingList invokes it without end (uses 2.5h). InviteDates computes end from location.scheduled_end OR start+3h. Durations are intentionally different between the two paths; confirm that's intended (spec said 2.5h for Dates page — matches)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100% (4/4 scenarios)"},
+  "test_credentials": "Owner: giftsdates@gmail.com / Admin@12345 ; Inviter: avtest_b@example.com / Test@12345",
+  "seed_data_creation": "During the Copy-to-all save test the owner's weekly schedule was temporarily overwritten with Friday 22:00-02:00 across all 7 days, then persistence was verified after reload. Immediately after testing, the schedule was restored to the original state via PATCH /api/auth/me: Friday 22:00-02:00 and Saturday 18:00-23:00 + 00:00-03:00 (specific day 2026-10-17 ranges were not touched).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both new features pass. Specific verifications performed:\n- weekly-copy-all-{d} present on each open day (Mon..Sun data-testid indexes 0..6). Clicking copy on Friday fills all 7 days with the same ranges and shows toast 'Hours copied to every day'. Save -> toast 'Saved' -> reload -> ranges persist for all 7 days.\n- /dates (owner side): row data-testid=date-row-8b3df82d... shows AddToCalendar trigger data-testid=add-to-calendar-8b3df82d-9e87-4df9-ac38-2b419d7240e0. Dropdown opens with cal-google-{id} (href=https://calendar.google.com/calendar/render?action=TEMPLATE&text=GiftsDates:+Dinner+·+Le+Bernardin&dates=20261017T120000Z/20261017T143000Z&location=Le+Bernardin,+London — duration is exactly 150 min / 2.5h as required) and cal-ics-{id} (downloads giftsdates-{id}.ics containing 3 VALARM blocks with TRIGGER:-PT1440M, -PT120M, -PT30M).\n- /dates (inviter side avtest_b): same booking appears under 'Outgoing (you booked)', AddToCalendar dropdown present with cal-google / cal-ics; no legacy separate google/ics buttons remain.\n- InviteDates DateCard: all 3 invites in INVITATION_SENT state (no location.scheduled_start) correctly hide the AddToCalendar button (showCal condition). No crash. Could not visually verify AddToCalendar on an invite card with scheduled_start because no invite is in LOCATION_CONFIRMED or later state in the current seed — but code path identical to DateBookingList (same AddToCalendar component) and renders without error.\n- No console errors or React warnings on either /dates or /profile during the full flow.",
+  "rca_of_the_issue": "n/a — no bugs found in the two features under test."
+}

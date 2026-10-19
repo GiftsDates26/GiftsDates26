@@ -1,0 +1,43 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GiftsDates">
+  <defs>
+    <linearGradient id="gold" x1="24" y1="20" x2="104" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBEFC0"/>
+      <stop offset="0.45" stop-color="#E9C56C"/>
+      <stop offset="1" stop-color="#B8862F"/>
+    </linearGradient>
+    <linearGradient id="goldSoft" x1="46" y1="54" x2="82" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCEFB8"/>
+      <stop offset="1" stop-color="#D9AE4E"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="46" y1="58" x2="82" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F43F5E"/>
+      <stop offset="1" stop-color="#9F1239"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Gold heart ring -->
+  <path filter="url(#glow)"
+    d="M64 114C22 84 12 55 25.5 39.5C37 25.5 56.5 27.5 64 45C71.5 27.5 91 25.5 102.5 39.5C116 55 106 84 64 114Z"
+    fill="none" stroke="url(#gold)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- Gift box -->
+  <g>
+    <!-- box body -->
+    <rect x="47" y="60" width="34" height="28" rx="3.5" fill="url(#rose)"/>
+    <!-- lid -->
+    <rect x="44" y="55" width="40" height="9" rx="3" fill="url(#rose)"/>
+    <!-- vertical ribbon -->
+    <rect x="60" y="55" width="8" height="33" fill="url(#goldSoft)"/>
+    <!-- horizontal ribbon on lid -->
+    <rect x="44" y="57.5" width="40" height="4.5" fill="url(#goldSoft)"/>
+    <!-- bow loops -->
+    <path d="M64 55C58 45 47 46 49 52C50.5 56.5 59 55.5 64 55Z" fill="url(#goldSoft)" stroke="#B8862F" stroke-width="0.8"/>
+    <path d="M64 55C70 45 81 46 79 52C77.5 56.5 69 55.5 64 55Z" fill="url(#goldSoft)" stroke="#B8862F" stroke-width="0.8"/>
+    <!-- knot -->
+    <circle cx="64" cy="53.5" r="3.4" fill="url(#gold)" stroke="#B8862F" stroke-width="0.8"/>
+  </g>
+</svg>

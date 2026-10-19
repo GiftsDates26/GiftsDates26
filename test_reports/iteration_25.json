@@ -1,0 +1,36 @@
+{
+  "summary": "Iter-25: validated Cancel Preview dialog on /dates for both regular DateBookingList items (date-cancel-btn-{id}) and invite DateCards (date-cancel-{id}). Backend pytest /app/backend/tests/test_cancel_preview.py 6/6 PASS. Regular inviter cancel (coins=400, taxi.sent=100): backend returns refund=300, comp=100, fee=100; inviter balance +300, recipient escrow -400, withdrawable +0. Regular no-taxi inviter cancel: 200/100/100. Regular invited-person cancel: full refund 500 to inviter. Invite inviter cancel (hold=400, taxi.confirmed=100): inviter +250, recipient.withdrawable +75, fee 75. Invite no-taxi inviter cancel: 200/100/100. Invite recipient cancel: inviter +400 full refund. UI (seeded 1 regular booking + 1 invite via Mongo): on /dates, clicking date-cancel-btn-{BID} opens cancel-preview-dialog (NOT window.confirm) showing cancel-preview-paid=500, cancel-preview-taxi='🚕 Taxi refunded in full' 100, cancel-preview-date-back='Date coins back (50%)' 200, cancel-preview-refund='You get back' 300, cancel-preview-comp=100, cancel-preview-fee=100 — matches backend. cancel-preview-keep closes dialog without cancelling (verified row still present, no coin change). Spanish (gd_lang=es, reload): title '¿Cancelar esta cita?', taxi row '🚕 Taxi reembolsado por completo' — labels translated. cancel-preview-confirm → POST /api/dates/cancel/{id} returned refund=300, inviter balance +300. For the invite card on /dates (DateCard date-cancel-{DID}): dialog shows Paid=400, Taxi=100, Date coins back (50%)=150, You get back=250, Compensation=75, Platform fee=75 — exactly matches backend _refund split (floor(300/2)+100=250, floor(300/4)=75, fee=75). After cancel-preview-confirm the invite status becomes CANCELLED and inviter coin balance increased by exactly 250 (verified via /api/auth/me before/after). Spanish labels on invite preview also verified. Routing note: there is no /invite-dates route — InviteDates is served at /dates (App.js line 59); both preview dialogs share the same page.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/dates (InviteDates)", "issues": ["React 'Cannot update a component (LanguageSwitcher) while rendering a different component' warning triggers for several children (InviteDates, EmptyDates, LiveLocation, Row) — pre-existing, not caused by this feature; worth cleaning up a setState-in-render in LanguageSwitcher."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cancel_preview.py",
+    "/app/test_reports/pytest/iter25.xml"
+  ],
+  "action_items": [
+    "No fixes required for the Cancel Preview feature — backend math and UI dialog match end-to-end for both regular dates and invites, in EN and ES."
+  ],
+  "critical_code_review_comments": [
+    "InviteDates DateCard (frontend/src/pages/InviteDates.jsx L146-173): refuseSplit computes a split pessimistically (Math.floor), while CancelPreviewDialog passes it via `split` prop — matches backend _refund which also uses // (floor). Good alignment, no banker's-rounding mismatch like the generic cancelSplit path.",
+    "backend/server.py cancel_date (L2976): platform_fee = dc - round(dc*0.5) - round(dc*0.25) uses Python's banker's round; for dc divisible by 4 (e.g. 400) math is exact (200/100/100). For odd dc (e.g. 410) you'd get 205/103/102 — fine, but frontend cancelSplit (regular path) uses Math.round and could disagree by 1 on .5 boundaries. Non-blocking.",
+    "InviteDates still has multiple window.confirm() calls (refuseTransport, rejectLocation, rejectPickup, pickup switch-to-taxi) — the task only converts the date-cancel flow to the AlertDialog preview. Consistency opportunity, not a bug.",
+    "/api/users/me returns 404 — only /api/auth/me is exposed. Non-blocking; a /users/me alias could be helpful.",
+    "server.py still 5802 lines — long-standing refactor flag."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cancel_preview.py",
+    "/app/test_reports/iteration_25.json"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Admin/inviter: giftsdates@gmail.com / Admin@GD24! (id 31ea1e41-9090-432b-914b-8cc72dc5d95f). Recipient: testuser@giftsdates.com / Test@12345 (id b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6).",
+  "seed_data_creation": "Backend pytest seeds db.date_bookings & db.dates per test and tears down. UI run seeded TEST-CP-REG-5f4b58e8 (regular confirmed+taxi.sent) and TEST-CP-INV-2cfd5766 (DATE_CONFIRMED invite with transportation.taxi confirmed) via Mongo, cleaned up at end — no residual TEST-CP-* docs remain.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression file: /app/backend/tests/test_cancel_preview.py — needs REACT_APP_BACKEND_URL, MONGO_URL, DB_NAME and -o addopts=\"\" (xdist in pytest.ini forces loadscope; this suite is scope=module). Testids verified: date-cancel-btn-{bid} (DateBookingList), date-cancel-{did} (InviteDates DateCard), cancel-preview-dialog, cancel-preview-paid/taxi/date-back/refund/comp/fee, cancel-preview-keep, cancel-preview-confirm. Both InviteDates DateCard and DateBookingList render on route /dates (there is no separate /invite-dates). Previous iter-24 regression /app/backend/tests/test_running_late_and_cancel.py still passes.",
+  "rca of the issue": "N/A — feature works end-to-end. Backend refund value matches the number shown in cancel-preview-refund exactly for all four scenarios (regular inviter/invited, invite inviter/recipient)."
+}

@@ -1,0 +1,33 @@
+{
+  "summary": "Tested the new VIP Availability Calendar 1h/2h/3h slot booking end-to-end. Backend: 9/9 pytest cases pass (test_vip_schedule_slots.py). GET /api/vip/schedule/{lena}/slots returns durations=[60,120,180], buffer=15, day windows [{from:18:00,to:23:00}] for 2026-10-15, and the pending 19:00-20:00 booking appears in 'taken' with lock_from=18:45 lock_to=20:15. POST /book correctly rejects 20:00-21:00 (409 SLOT_TAKEN, respects 15-min buffer around existing booking), 17:30-18:30 (400 TIME_UNAVAILABLE), 18:00-18:30 (400 BAD_DURATION), 20:15-21:45 (400 BAD_DURATION), and accepts 20:15-22:15 (200). /reschedule enforces the same BAD_DURATION / TIME_UNAVAILABLE rules while excluding the current booking from conflict check. Normal-date cross-check: inserting an accepted date_bookings for Lena at 21:00 local causes slots endpoint to surface it under taken as status='date' with lock_from=20:45 lock_to=23:45 and VIP booking 20:45-22:45 is rejected with 409 SLOT_TAKEN. Frontend: /profile/{lena} as admin shows profile-open-schedule → opens vs-book-dialog with vs-book-day-2026-10-15, vs-book-dur-1h/2h/3h, TimeChooser (vs-book-time + vs-book-time-summary). Switching duration updates summary (Date starts 20:15 → ends 21:15 for 1h, 22:15 for 2h; 3h has no valid starts because 20:15+3h would exceed 23:00 window so TimeChooser renders vs-book-time-no-slots — correct). Start options correctly exclude the 18:45-20:15 locked range (first available 20:15, hour quick picks 21:00 & 22:00 for 1h). vs-book-submit creates a pending booking (toast: 'Request sent — waiting for VIP confirmation'); created booking cleaned up after test (coins refunded). Normal date invite modal (profile-view-date-button) still opens with the day-picker + TimeChooser (2.5h default) — regression intact.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VipScheduleBookModal (vs-book-dialog)", "issues": ["Quick-picks label is hardcoded to 'Quick picks (2.5h)' via the quick_slots i18n key even when the selected duration is 1h/2h/3h. Low priority copy nit — the picks themselves are correctly re-filtered per duration."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_vip_schedule_slots.py",
+    "/app/test_reports/pytest/vip_schedule_slots.xml"
+  ],
+  "action_items": [
+    "(nit) Replace the hardcoded '(2.5h)' in i18n key quick_slots with a dynamic duration label inside TimeChooser.jsx so VipScheduleBookModal shows '(1h)/(2h)/(3h)' instead of '(2.5h)'."
+  ],
+  "critical_code_review_comments": [
+    "server.py _vs_extra_checks (3755-3760): duration gate uses tuple VIP_DURATIONS=(60,120,180) and correctly rejects 90/30/other; normal-date lock buffer applied via _vs_normal_locks + 15-min lock_from/lock_to from _block — matches spec.",
+    "server.py vs_public_slots (3851-3881): adds durations, per-day windows, and taken (incl. 'date' entries from _vs_normal_locks with lock_from/lock_to) — frontend TimeChooser consumes these correctly via freeStarts(wins, taken, minStart, slot).",
+    "server.py vs_book / vs_reschedule: both call _vs_extra_checks AFTER the window/overlap guards; reschedule excludes itself ({'id':{'$ne':bid}}) so a user can shrink/expand their own booking without self-conflict — correct.",
+    "VipScheduleBookModal.jsx line 48: on open resets dur=60; passing key={`${day}-${dur}`} to TimeChooser forces re-mount on duration change so startMin is re-picked from valid starts for that duration — good UX pattern.",
+    "availability.js freeStarts(slot) and freeRanges(slot) now accept slot param — correctly flows from VipScheduleBookModal's dur state through TimeChooser (slot={dur}). Verified: 2h duration excludes 20:00 start (would overlap lock 20:00-20:15 end-buffer) and 3h duration yields no valid starts.",
+    "TimeChooser.jsx line 39: quick_slots i18n label contains hardcoded '(2.5h)' — see design_issues above."
+  ],
+  "updated_files": ["/app/backend/tests/test_vip_schedule_slots.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (modal flow + submit + regression check)"},
+  "test_credentials": "Admin booker: giftsdates@gmail.com / Admin@12345 ; VIP Lena id=0be0c2a0-cbb3-480c-b785-533dff4fb64e",
+  "seed_data_creation": "Preserved existing va-test-1 (Lena 2026-10-15 18:00-23:00 America/Toronto) and vs-test-1 (pending 19:00-20:00). All extra vip_sched and date_bookings created during tests were deleted in fixture teardown; verified Mongo state at end: only vs-test-1 remains for Lena on 2026-10-15, no stray test date_bookings. One manual UI-submitted booking (20:15-21:15) that was created when exercising vs-book-submit was manually deleted and 150 coins refunded to admin + 150 escrow decremented from Lena.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression suite /app/backend/tests/test_vip_schedule_slots.py runs serially (use `-n 0` because pytest.ini forces -n 2 --dist loadscope, and TestBook writes a 20:15-22:15 booking consumed by TestReschedule). Lena's seed availability 2026-10-15 18:00-23:00 America/Toronto + pending 19:00-20:00 is what the duration/buffer assertions depend on — do not modify. TimeChooser copy nit ('2.5h' hardcode in quick_slots i18n key) is the only outstanding minor issue."
+}

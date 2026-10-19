@@ -1,0 +1,26 @@
+{
+  "summary": "Tested the new VIP Extra-Hours feature end-to-end. Backend (pytest): 9/9 passing — meta exposes extra_hour_min_coins=250, PUT /api/vip/profile clamps price_extra_hour to min 250, /api/vip/book charges base + extra_hours*vip_extra_price and stores extra_hours/extra_coins, /api/vip/schedule/{vip_id}/slots returns extra_hour_price, /vip/schedule/{vip_id}/book rejects non-whole-hour (BAD_DURATION), accepts 4h and 5h (no upper limit) charging (hours-1)*extra, rejects insufficient coins, and reschedule returns SAME_DURATION when extra_hours changes. Frontend (Playwright): VipEditor shows vip-price-extra with default 300 (saved earlier), typing 100 and blurring snaps to 250 (client clamp), save succeeds. Admin viewing testuser's VIP calendar modal (vs-book-dialog) correctly maps 3h duration button to extra_hours=2, +2 plus clicks → 4 extra hours, total tile shows '🪙 1200 (4 × 300)', minus decrements, and submit shows 'Request date · 🪙 1050' (150 base + 3*300). vip-price-extra-view tile was not verified because admin viewer sees the VIP section locked (unlock not purchased); backend confirms the value exists on the user via /slots.extra_hour_price=300.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VipEditor", "issues": ["Minor: SAME_DURATION error name is semantically inverted — it is raised when the NEW duration differs, not when it's the same. Code and UI copy are consistent ('Keep the same length when rescheduling'), but the constant name may confuse future readers."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_vip_extra_hours.py", "/app/test_reports/pytest/iter17_extra_hours.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 5345 lines — split into modules (vip_schedule.py, vip_profile.py, bookings.py) for maintainability.",
+    "SAME_DURATION branch name is inverted vs. its trigger condition (fires when durations differ). Consider renaming to DURATION_CHANGED or adjust comment.",
+    "vip_extra_price() defaults to 250 even when target has no VIP profile at all, so non-VIP targets of /vip/book also get charged 250/extra-hour — intentional per spec but worth documenting."
+  ],
+  "updated_files": ["/app/backend/tests/test_vip_extra_hours.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of exercised flows"},
+  "test_credentials": "admin giftsdates@gmail.com / Admin@GD24!, user testuser@giftsdates.com / Test@12345 (made VIP previously).",
+  "seed_data_creation": "Created a VIP availability block for testuser on a future date via POST /api/vip/schedule/availability during the test session; booking rows cleaned up by fixture teardown. The availability block created from the browser (date ~3 days out) remains.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_vip_extra_hours.py seeds admin.coins via Mongo and uses testuser as the VIP. Run with REACT_APP_BACKEND_URL env var. The 'SAME_DURATION' error is raised when the new reschedule duration differs from original (correct per PRD, misleading name).",
+  "rca of the issue": "N/A — feature works end-to-end on both backend and frontend. Initial test failure (test_vs_reschedule_same_duration) was a test-author misunderstanding of the SAME_DURATION semantics; corrected and now passes."
+}

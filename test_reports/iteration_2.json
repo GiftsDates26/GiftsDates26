@@ -1,0 +1,31 @@
+{
+  "summary": "Stripe payments E2E tested on GiftsDates against Emergent-provisioned Stripe test sandbox. Backend pytest (13/13 passing): POST /api/payments/checkout returns a Stripe checkout_url + session_id for every coin package (small_talk, starter, popular, extra, vip), for custom USD, and for subscription-mode plans (premium_monthly, premium_lite_monthly, vip_monthly); unknown package_id correctly 400s; endpoint requires auth; GET /api/payments/status/{sid} returns pending for a fresh session and 404 for an unknown session. Frontend E2E (Playwright, admin login giftsdates@gmail.com/Admin@12345): Wallet 'Top up' modal opens, clicking small_talk package redirects to Stripe Checkout (checkout.stripe.com). Paid with test card 4242 4242 4242 4242 / 12/34 / 123 (name Test User, manual US billing address) -> redirected to /payment/success, status transitions to 'Payment successful', user coin balance went from 0 -> 100 (Small Talk = 100 coins credited). /payment/cancel route renders the cancel box correctly. Premium/Premium-Lite/VIP buttons inside the 'Get Premium' modal (data-testids: premium-subscribe-confirm, premium-lite-subscribe-confirm, vip-subscribe-confirm — note: modal is opened via ?premium=1 or ?vip=1 query params) all successfully redirect to Stripe checkout. All payment-related UX works end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Stripe Checkout banner", "issues": ["Hosted Stripe page shows the banner 'This page is from an unclaimed Stripe sandbox. No real payments are processed.' This is expected for the Emergent-provisioned sandbox but will be user-visible until the sandbox is claimed/converted to a live account before go-live."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_payments.py", "/app/test_reports/pytest/payments.xml", "/app/backend/tests/test_smoke.py"],
+  "action_items": [
+    "Before production launch: claim the Stripe sandbox / switch to a live Stripe account so the 'unclaimed sandbox - no real payments are processed' banner disappears and real charges can be collected.",
+    "Consider verifying webhook delivery end-to-end (checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.deleted) with Stripe CLI or Dashboard test events — current tests cover the status-poll fulfilment path which already works; webhook path was not exercised directly."
+  ],
+  "critical_code_review_comments": [
+    "server.py is still ~4900 lines — payments/wallet/stripe handlers should be moved into a dedicated router module.",
+    "POST /api/stripe/webhook returns 400 'Invalid signature' on any construct_event exception without logging the real reason — consider logging the exception type (and only in dev) to speed up debugging.",
+    "payment_status endpoint does not require auth — anyone who guesses or obtains a session_id can read its payment_status; low-risk because session_ids are unguessable, but prefer requiring the owning user.",
+    "Frontend buy() handler uses window.location.origin as origin_url; works, but if the preview URL ever differs from location.origin (iframe/preview) the success_url could break. Consider using REACT_APP_BACKEND_URL-derived origin.",
+    "Wallet.jsx mixes English/Russian strings for buyCoins() toast messages (hardcoded Russian) — should be routed through t()/i18n."
+  ],
+  "updated_files": ["/app/backend/tests/test_payments.py", "/app/test_reports/iteration_2.json", "/app/test_reports/pytest/payments.xml"],
+  "success_rate": {"backend": "100% (13/13 pytest)", "frontend": "100% (coin purchase E2E with real test card, 3 subscription-plan Stripe redirects, cancel page)"},
+  "test_credentials": "Admin: giftsdates@gmail.com / Admin@12345 (used for E2E). Stripe test card: 4242 4242 4242 4242, any future expiry (used 12/34), any CVC (used 123), any billing address (used 123 Test St, San Francisco, CA 94107, US).",
+  "seed_data_creation": "One live top-up was performed against the test sandbox: admin user credited with 100 coins (small_talk package). Several TEST_pay_* users were registered by pytest.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend payment tests: `cd /app && REACT_APP_BACKEND_URL=https://giftsdates21.preview.emergentagent.com python -m pytest backend/tests/test_payments.py -v`. Registration endpoint requires age, interested_in, city, country in addition to email/password/name/gender/birth_date. Premium/VIP/Lite Stripe buttons live inside the <PlanComparison> modal; open it with /wallet?premium=1 or /wallet?vip=1. Stripe hosted checkout: payment methods are rendered as custom radios (not native <input type=radio>) — use page.get_by_text('Card', exact=True).click() to reveal the card fields; then fill input#cardNumber / input#cardExpiry / input#cardCvc / input#billingName and click 'Enter address manually' before filling address fields; submit via button[data-testid='hosted-payment-submit-button'].",
+  "rca of the issue": "N/A — Stripe integration works end-to-end; coins are credited via the /payments/status polling+_fulfill() path on return to /payment/success."
+}

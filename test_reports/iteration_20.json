@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration-20: tested the new VIP pick-up proposal flow and the client Arrival Check-In. Backend: 7/7 pytest pass in /app/backend/tests/test_pickup_arrived.py. Covered pickup/propose (403 for non-VIP, 400 ADDRESS_REQUIRED, 400 PICKUP_PENDING on duplicate, happy path persists {address,city,postal_code,country,lat,lng,time,note,status='proposed'} and notifies the requester), pickup/decline (keeps booking pending, pickup.status='declined', VIP notified, and VIP is allowed to re-propose), pickup/accept (booking becomes confirmed + pickup.status='accepted'), arrived (400 NOT_DATE_TIME outside the 2h window; inside the window it sets arrived_at, posts a vs_arrived notification visible via GET /api/notifications as the VIP, and is idempotent on the second call). Frontend (Playwright on preview URL): logged in as VIP (testuser) on /vip-bookings — pending incoming card exposes vs-pickup-propose-{id}, clicking opens vs-pickup-form-{id} with AddressPicker manual mode (address-manual-street/city), vs-pickup-time-{id} (prefilled with the date start), vs-pickup-note-{id}, and vs-pickup-send-{id}. After send, the card shows vs-pickup-status-{id} with 'Pick-up proposed · 99 Pickup Lane, London · Pick-up time 02:00 · \"Ring the bell\"'. Logged in as admin (requester) and verified vs-pickup-accept-{id} + vs-pickup-decline-{id} buttons on the My Requests card; clicking accept flipped the booking to Confirmed, replaced the status with 'Pick-up agreed', and rendered vs-pickup-directions-{id}. For arrival, mutated the seed booking to start at now+30min and status=confirmed; as the admin client, vs-arrived-{id} 'I've arrived' appeared, clicking it posted the API call, toast fired, and the button was replaced with vs-arrived-badge-{id} '📍 Arrived at 01:38 AM' — also visible to the VIP under the Confirmed tab, with 2 vs_arrived in-app notifications in GET /api/notifications. Existing vs-taxi-* testids still render on pending cards (6 found). No regressions observed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VipPickupBlock status card", "issues": ["Minor: when the pickup is in state 'declined', VipPickupBlock still shows the status pill 'Pick-up declined' alongside the re-propose button, which is correct, but the status text and the propose CTA share the same sky-tinted panel — consider greying out the declined row to avoid confusing the VIP that a proposal is still outstanding."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pickup_arrived.py",
+    "/app/test_reports/pytest/iter20.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "vs_pickup_propose uses model_dump(exclude={'time'}) which keeps the raw unsanitised 'address' from the request before the re-override — safe because address is overridden on the next line, but note the 'note' field is sanitised only via the fallback. Confirmed: pickup['note'] correctly caps to 300 chars.",
+    "vs_arrived gating relies on _vs_start_dt/_vs_end_dt interpreting booking date/start/end as UTC — any locale assumption on the client side could feel off; today's test used UTC start so OK, but consider stamping tz-aware date strings on booking creation.",
+    "VipPickupBlock does not disable the re-propose button while a declined pickup is being replaced — if network is slow a user could double-submit; add disabled={busy} on the propose button (currently only the send/answer buttons are busy-guarded).",
+    "server.py still 5672 lines — longstanding refactor flag."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pickup_arrived.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Admin/client: giftsdates@gmail.com / Admin@GD24! · VIP: testuser@giftsdates.com / Test@12345 (b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6).",
+  "seed_data_creation": "Reused seed booking 36f0a2ab-6351-45cd-8ba2-8cb6b6dd200f. Backend tests mutate its pickup/status/date fields during the run; after all tests complete it ends up status=confirmed with pickup={address:'Test Place'}, arrived_at set, date mutated to 'now+30min' (UTC). The far-future seeded booking 59cd396e... is briefly moved to 2099-01-01 for the NOT_DATE_TIME test and restored to 2025-10-17 12:00-13:00 before exiting.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite /app/backend/tests/test_pickup_arrived.py runs in ~2.5s (needs REACT_APP_BACKEND_URL + MONGO_URL + DB_NAME env vars; use 'pytest -p xdist -n 1'). The seed booking 36f0a2ab-...200f is intentionally left in a mutated state (confirmed, arrived_at, pickup={address:'Test Place'}, date set to a recent now+30min UTC); reset it via mongo if you need a fresh pending state. The far-future seed booking 59cd396e-...6ef7f11cebdd is restored to 2025-10-17 12:00-13:00 and remains confirmed with 221B Baker Street location + lat/lng (used by iter19 directions test). Pickup accept transitions pending→confirmed but does not spend coins (only the taxi/send flow does); verified. Notification type for arrived is 'vs_arrived', for pickup is 'vs_pickup'. UI tabs in /vip-bookings: 'Requests' (incoming pending for VIP role), 'Confirmed', 'My Requests' (outgoing for the requester/admin), 'Cancelled & refused', 'Past'.",
+  "rca of the issue": "N/A — no failures. All happy-path and gated error cases match the spec."
+}

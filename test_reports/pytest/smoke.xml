@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="8" time="5.685" timestamp="2026-10-13T01:04:41.935942+00:00" hostname="agent-env-0a1914d3-1786-4a36-bb2d-14b8a88cbeab"><testcase classname="tests.test_smoke" name="test_meta_endpoint" time="0.191" /><testcase classname="tests.test_smoke" name="test_admin_login" time="0.283" /><testcase classname="tests.test_smoke" name="test_admin_me" time="3.629" /><testcase classname="tests.test_smoke" name="test_signup_login_me" time="0.645"><failure message="AssertionError: assert 'test_user_dd...9@example.com' == 'TEST_user_dd...9@example.com'&#10;  &#10;  - TEST_user_ddd593a7e9@example.com&#10;  ? ^^^^&#10;  + test_user_ddd593a7e9@example.com&#10;  ? ^^^^">backend/tests/test_smoke.py:78: in test_signup_login_me
+    assert r2.json()["email"] == new_user["email"]
+E   AssertionError: assert 'test_user_dd...9@example.com' == 'TEST_user_dd...9@example.com'
+E     
+E     - TEST_user_ddd593a7e9@example.com
+E     ? ^^^^
+E     + test_user_ddd593a7e9@example.com
+E     ? ^^^^</failure></testcase><testcase classname="tests.test_smoke" name="test_me_requires_auth" time="0.066" /><testcase classname="tests.test_smoke" name="test_login_invalid" time="0.075" /><testcase classname="tests.test_smoke" name="test_profiles_listing" time="0.079" /><testcase classname="tests.test_smoke" name="test_date_ideas" time="0.115" /></testsuite></testsuites>

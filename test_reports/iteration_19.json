@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration-19: tested commitment checkboxes, cancel-preview dialog math, and Google-Maps directions buttons. Backend pytest 3/3 pass: (a) requester cancel of a confirmed VIP calendar booking returns refund=50% / comp=25% / fee=25% and the client's balance increases by exactly the refund amount, (b) VIP cancel returns 100% refund with comp=fee=0, (c) target booking 59cd396e... is confirmed and carries location {address,lat,lng}. Frontend Playwright: vs-book-dialog on VIP profile exposes all commitment testids (vs-book-commitment, vs-book-commitment-terms, vs-book-commitment-privacy, vs-book-commitment-checkbox) and vs-book-submit is disabled with the checkbox unticked and flips to enabled only after ticking (a time is auto-picked). On /vip-bookings as admin, the target booking shows vs-cancel-{id} and vs-directions-{id}; the directions href is 'https://www.google.com/maps/dir/?api=1&destination=51.5237%2C-0.1585' (lat,lng as expected). Cancel preview dialog shows paid=500, refund=250, comp=125, fee=125; cancel-preview-keep closes the dialog without cancelling. Spanish language renders the cancel preview correctly (title '¿Cancelar esta cita?', 'Mantener cita', 'Sí, cancelar').",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VIP profile Book-a-date Sheet (vs-book-dialog)", "issues": ["Commitment checkbox and submit button sit at the bottom of the Sheet and are below the viewport fold on 1920x1080 — the user must scroll inside the Sheet to see the 'I agree' tick box. Consider sticking the commitment+submit footer so the gating is always visible."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter19_cancel_directions.py",
+    "/app/test_reports/pytest/iter19.xml"
+  ],
+  "action_items": [
+    "Optional: make the commitment note + submit sticky inside vs-book-dialog so users don't have to scroll to find the required checkbox."
+  ],
+  "critical_code_review_comments": [
+    "CancelPreviewDialog uses Math.round for refund+comp — fee is derived as remainder (total - refund - comp). For total=500 this gives 250/125/125 (matches backend). Good consistency.",
+    "DirectionsButton falls back to a comma-joined address when lat/lng are missing — this is good; verify postal_code/country are populated in all booking types (DateBookingList passes the raw booking object; vip_sched/date_bookings must populate location consistently).",
+    "server.py still 5563 lines — split long overdue (noted in iter 15-18 as well)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter19_cancel_directions.py"
+  ],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Admin giftsdates@gmail.com / Admin@GD24! (requester); VIP testuser@giftsdates.com / Test@12345 (b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6).",
+  "seed_data_creation": "Two throwaway VIP calendar bookings created and cancelled during the backend tests (one requester-cancel, one VIP-cancel) — both end in status=cancelled so they do not leak active slots. No TEST_ prefix on these because the vs_book payload doesn't carry a name field.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: /app/backend/tests/test_iter19_cancel_directions.py (3 tests, ~3s). Note: /api/users/me does NOT exist — balances come from /api/auth/me. VIP slots endpoint is /api/vip/schedule/{vip_id}/slots and each slot has fields {start,end,state} where state='available' means bookable. POST /api/vip/schedule/{vip_id}/book returns {booking_id,status}; coins are read via /api/vip/schedule/bookings/mine. The target booking 59cd396e-4b32-43b1-87fa-6ef7f11cebdd (Sat 17 Oct 12:00-13:00, 221B Baker Street, lat 51.5237 lng -0.1585) is confirmed and should remain so for future directions-button retests. Avoid cancelling it.",
+  "rca of the issue": "N/A — no failures. Only UX nit: the commitment checkbox inside the VIP calendar Sheet is below the viewport fold on desktop; functionality is correct."
+}

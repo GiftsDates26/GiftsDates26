@@ -1,0 +1,30 @@
+{
+  "summary": "Backend + UI test of the new slot-locking feature on invites and date-bookings. 13/13 backend pytest cases pass; UI shows free-only ranges on profile availability and locked-time list inside InviteDateModal exactly as specified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_slot_locking.py",
+    "/app/test_reports/pytest/slot_locking.xml"
+  ],
+  "action_items": [
+    "Cleanup orphan imports: DateBookingModal is imported in /app/frontend/src/pages/Browse.jsx and /app/frontend/src/pages/ProfileView.jsx but never rendered (dead import). ProfileView only mounts InviteDateModal when the user clicks 'Invite on a Date' or a day in the availability overview. If 'Book a Date' is still intended to be a separate flow (as the spec mentions DateBookingModal with testid date-time), it needs a UI entry point; otherwise remove the imports."
+  ],
+  "critical_code_review_comments": [
+    "_taken_blocks dedupes identical blocks via tuple(sorted(x.items())) — works today but relies on dict value equality; if lock_from/lock_to drift by any computation path it could silently keep duplicates. Consider dedupe by (reason, from, to).",
+    "_assert_slot_free compares start_min against lock bounds but when a cancelled window wraps midnight (lock_to <= lock_from) it extends lt by 1440; however start_min for the new date is never wrapped, so a block like 22:45-01:00 would correctly reject a 00:00 start only because 00:00 falls into [-...] mod. The existing invite windows at 22:00 and 23:00 on 2026-10-16 produce lock_to crossing midnight and the test confirmed SLOT_BUSY works. Good.",
+    "profile_availability returns busy_slots AND locked_days — slightly redundant payload (locked_days is a subset of busy_slots filtered by reason=='cancelled'); fine for UI but keep in mind.",
+    "DateBookingModal.jsx is orphan (not wired to any trigger). If kept, add a UI entry or delete to avoid bitrot."
+  ],
+  "updated_files": ["/app/backend/tests/test_slot_locking.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% of reachable flows (InviteDateModal + profile availability)"},
+  "test_credentials": "Inviter: avtest_b@example.com / Test@12345 ; Admin (invitee): giftsdates@gmail.com / Admin@12345 (id fc5b1d5f-3966-428d-b13c-04911f9f38f3)",
+  "seed_data_creation": "The valid-slot pytest creates one invite on 2026-10-24 00:00 then immediately deletes the db.dates doc via pymongo so no cancelled-block residue is left. One leftover invite from an earlier (manually-fixed) failed test run was removed via mongosh (id 4c08ac69-128e-4916-8f34-3f1da5ada6a0). Admin availability untouched. Expected busy_slots after the run (verified): 2026-10-17 12:00 booked, 2026-10-16 22:00+23:00 booked, 2026-10-24 19:00 cancelled.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend verified end-to-end:\n- GET /api/profiles/{pid}/availability returns busy_slots per local day with keys from/to/lock_from/lock_to/reason. 15-min buffer confirmed (19:00-21:30 -> lock_from 18:45, lock_to 21:45).\n- locked_days contains only cancelled blocks (not fully-booked days).\n- POST /api/invites and POST /api/dates/book both raise TIME_PASSED (past-day on an open weekly schedule), SLOT_LOCKED:19:00-21:30 (overlap cancelled on 2026-10-24) and SLOT_BUSY:... (overlap pending invite on 2026-10-16).\n- Valid 2026-10-24 00:00 invite succeeds (status INVITATION_SENT), persisted with local_day/local_time via /api/invites listing.\n\nFrontend verified on /profile/fc5b1d5f-3966-428d-b13c-04911f9f38f3 as Bob:\n- profile-availability card lists ONLY free ranges (no 'Booked'/'Cancelled' tags).\n- 2026-10-16 (fully-blocked) absent from the open-day list; 2026-10-24 shows only 00:00–03:00 (3 start times).\n- Clicking profile-avail-day-2026-10-24 opens InviteDateModal with Sat Oct 24 selected on the calendar; invite-time clock defaults 00:00, Date starts 00:00 / ends 02:30.\n- invite-time-locked lists '19:00–21:30 · cancelled date' (testid invite-time-locked-19:00 present); Available hours chip = 00:00–03:00; Quick picks = 00:00–02:30.\n- Only 00 hour is active on the clock; 19..21 hours fall outside the window and are correctly excluded from starts.\n\nNot verified via UI: DateBookingModal (date-time testid). The component is imported but never rendered anywhere in the app, so there is no UI trigger for it. If the 'Book a Date' flow is still a product requirement, main agent needs to wire a trigger button. The underlying code path uses the same TimeChooser so behavior would be identical to InviteDateModal.",
+  "rca_of_the_issue": "n/a — no new bugs. Only observation: DateBookingModal component is dead-wired."
+}

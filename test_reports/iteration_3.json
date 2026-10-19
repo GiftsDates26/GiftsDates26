@@ -1,0 +1,41 @@
+{
+  "summary": "Tested new availability-ranges + clock picker feature end-to-end. Backend validation (weekly schedule, specific-day ranges, overnight range, invite time/clock validation, closed-day rejection) all PASS. Inviter end-to-end UI flow (open InviteDateModal, pick open day, pick time via clock/quick chip, fill 3 activities, ack, send) PASS. Owner-side profile availability UI (tabs, toggles, add/remove ranges, specific-day editor) renders & interacts correctly. HOWEVER: Profile Save button crashes the whole app for any owner whose relationship_intent is unset (e.g. admin seed). Root cause: Profile.jsx save() sets empty list fields to '' instead of [] for relationship_intent, backend returns 422 with detail=array-of-pydantic-errors, and toast.error(detail) tries to render an object array -> React 'Objects are not valid as a React child' runtime error. This blocks owner from saving availability from the UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "pages/Profile.jsx save()", "issue": "DETAIL_KEYS normalization sends relationship_intent as '' instead of [] -> backend 422. Also orientations/genders/interests/passport_cities/relationship_intent are not in the list-field whitelist (only ['hobbies','languages_spoken','availability']). Any user without a saved relationship_intent cannot save profile.", "selector": "[data-testid=profile-save-button]", "priority": "HIGH"},
+      {"component": "pages/Profile.jsx save() catch", "issue": "toast.error(e.response?.data?.detail) crashes React with 'Objects are not valid as a React child' because FastAPI 422 returns detail as array of {type,loc,msg,input,url} objects. Needs stringification / typeof check.", "selector": "[data-testid=profile-save-button]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_availability.py",
+    "/app/test_reports/pytest/availability.xml"
+  ],
+  "action_items": [
+    "Fix Profile.jsx save(): include relationship_intent, orientations, genders, interests, passport_cities (and any other List field) in the list-defaulting whitelist so they default to [] instead of ''.",
+    "Fix all axios error toasts (Profile.jsx, InviteDateModal, DateBookingModal, etc.) to safely stringify 422 detail arrays — e.g. `const d = e.response?.data?.detail; const msg = Array.isArray(d) ? d.map(x=>x.msg).join(', ') : (typeof d==='string'?d:t('failed'));`",
+    "Consider adding global axios response interceptor to normalize 422 payloads so individual callers don't have to."
+  ],
+  "critical_code_review_comments": [
+    "Profile.jsx list-field normalization is brittle: 5+ List fields in ProfileUpdate (relationship_intent, orientations, genders, hobbies, languages_spoken, availability, interests, passport_cities) but only 3 are whitelisted. Easy to miss when adding new list fields.",
+    "FastAPI 422 responses are not uniformly handled on the frontend. Any un-caught 422 blown through `toast.error(detail)` will crash the SPA.",
+    "day_windows() backend returns None (no restriction) when user has no availability set at all, [] when restricted-but-closed-for-this-day. The /availability endpoint reports restricted correctly. Clear & consistent.",
+    "server.py is 4930 lines — strongly consider splitting into modules (users, dates, invites, availability, videocalls)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_availability.py",
+    "/app/memory/test_credentials.md (not modified)"
+  ],
+  "success_rate": {"backend": "100% (9/9 pytest + manual)", "frontend": "70% (inviter E2E passes; owner UI renders & edits, but Save broken by pre-existing relationship_intent bug)"},
+  "test_credentials": "Owner: giftsdates@gmail.com / Admin@12345; Inviter: avtest_b@example.com / Test@12345",
+  "seed_data_creation": "Restored owner's weekly Friday 22:00-02:00 + specific day 2026-10-17 (12:00-14:30 & 19:00-23:00) after tests. Several invites were created on owner from inviter (consumed inviter coins). One invite send during E2E test consumed inviter 400 coins.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The new availability feature is working end-to-end on the backend and inviter UI. The Profile Save bug is a PRE-EXISTING issue surfaced because testing with admin whose relationship_intent is None. If main agent fixes Profile.jsx save() list-whitelist + toast error handling, re-run the owner UI editing tests (weekly toggle, add range, specific-days click). Backend test file is at /app/backend/tests/test_availability.py — remember to run with `-o addopts=` because the project pytest.ini forces -n (xdist) which collisionally cannot see env var.",
+  "rca_of_the_issue": "Owner UI Save failure RCA: 1) In Profile.jsx save(), code loops DETAIL_KEYS and sets empty/null fields to [] only for keys in ['hobbies','languages_spoken','availability']. relationship_intent is also List[str] in backend but gets set to ''. 2) Backend FastAPI rejects '' for List[str] with 422 (detail = list of ValidationError dicts). 3) Save catch block does `toast.error(e.response?.data?.detail || t('failed'))` — passes the ARRAY of error objects to sonner's toast which React tries to render => 'Objects are not valid as a React child' crash. Mitigation: extend list-field whitelist OR delete empty list fields before PATCH; and stringify the error detail safely."
+}

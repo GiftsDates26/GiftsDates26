@@ -1,0 +1,29 @@
+{
+  "summary": "Iter-24: tested two new VIP features — (1) client-side 'Running late' heads-up and (2) Taxi line in the Cancel preview. Backend pytest /app/backend/tests/test_running_late_and_cancel.py 9/9 PASS: POST /vip/schedule/bookings/{id}/late works for BOTH sides — VIP token sets booking.late and emits vs_late notification to the admin requester ('Your VIP is running N min late'); admin token sets booking.client_late and emits vs_late notification to the VIP ('Your client is running N min late'). Third-party (freshly-registered user) -> 403. Invalid minutes (7) -> 400 BAD_MINUTES. Window rule verified: non-confirmed -> 400 NOT_DATE_TIME; start>+3h ahead -> 400 NOT_DATE_TIME. Cancel refund math with taxi coins (coins=300, taxi_coins=100): client cancels -> refunded=200 (date 100 + taxi 100), compensation=50, platform_fee=50 — matches cancel-preview math exactly. VIP cancels with same booking -> refunded=300 (full incl taxi), comp=0, fee=0. Without taxi (coins=200, taxi=0) client cancel -> refunded=100, comp=50, fee=50. UI Playwright on /vip-bookings as admin/client in the My Requests tab for a confirmed booking inside the 3h window with taxi_coins=100: vs-late-{id} 'Running late' present, panel text 'Let your VIP know how late you\\'ll be' (client copy), clicking 10' toasts 'Your VIP has been notified' and renders vs-client-late-badge-{id} '⏱ Client running 10 min late'. Cancel preview dialog rows observed: cancel-preview-paid 🪙300 · cancel-preview-taxi '🚕 Taxi refunded in full' 🪙100 · cancel-preview-date-back 'Date coins back (50%)' 🪙100 · cancel-preview-refund 'You get back' 🪙200 · cancel-preview-comp 🪙50 · cancel-preview-fee 🪙50 — all data-testids present, all values match the backend split and the spec. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_running_late_and_cancel.py",
+    "/app/test_reports/pytest/iter24.xml"
+  ],
+  "action_items": [
+    "Legacy /app/backend/tests/test_pickup_arrived.py is still broken from iter-23 (hits removed /pickup/propose + /pickup/decline). Delete it — new coverage lives in test_pickup_offer_flow.py."
+  ],
+  "critical_code_review_comments": [
+    "vs_cancel refund math: fee = base - refund - comp is computed on the non-taxi base (correct), but the server returns {refunded, compensation, platform_fee} without the breakdown of taxi vs date — frontend has to re-derive 'date back' as refund - taxi. Minor API ergonomics flag; works correctly as-is.",
+    "RunningLateButton.send catches error and shows e.response?.data?.detail — pydantic 422 'minutes: value is not a valid integer' would render the raw object. BAD_MINUTES/NOT_DATE_TIME strings are handled, but any new validation error would surface awkwardly. Non-blocking.",
+    "CancelPreviewDialog.cancelSplit uses Math.round which can disagree with backend's Python round() (banker's rounding) on .5 edges — e.g. base=100 -> round(50)=50 both; base=90 -> round(45) differs (45 vs 45 — ok). For coins divisible by 2 current test values this is fine; worth noting if non-even taxi/coins amounts ever ship.",
+    "server.py still 5802 lines — long-standing refactor flag."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_running_late_and_cancel.py",
+    "/app/test_reports/iteration_24.json"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Admin/client: giftsdates@gmail.com / Admin@GD24! · VIP: testuser@giftsdates.com / Test@12345 (id b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6).",
+  "seed_data_creation": "Backend tests create a fresh booking via POST /api/vip/schedule/{VIP_ID}/book from the first free slot, shift date/start/end to today-30m..today+30m UTC in db.vip_sched for late-window tests, and set coins/taxi_coins for cancel-math tests; teardown deletes the booking. UI run used booking 2f105ac1-d12d-457c-96cd-dc960d99ac8b (seeded via /tmp/seed_late.py) and cleaned it up after.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression file: /app/backend/tests/test_running_late_and_cancel.py — needs REACT_APP_BACKEND_URL, MONGO_URL, DB_NAME and -o addopts=\"\" (same reason as iter-23: xdist loadscope collides with module-scoped auth). Key testids verified: vs-late-{id}, vs-late-panel-{id}, vs-late-{id}-{m}, vs-late-badge-{id} (VIP side), vs-client-late-badge-{id} (client side), cancel-preview-dialog, cancel-preview-paid/taxi/date-back/refund/comp/fee, cancel-preview-confirm/keep. Known pre-existing issue (iter-23) still open: /app/backend/tests/test_pickup_arrived.py references removed endpoints.",
+  "rca of the issue": "N/A — both new features (dual-side Running Late + Taxi line in Cancel preview) work end-to-end as specified. Backend refund value matches cancel-preview-refund exactly."
+}

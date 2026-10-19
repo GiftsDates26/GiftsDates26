@@ -1,0 +1,22 @@
+{
+  "summary": "Smoke test of imported GiftsDates24 repo (exact copy, JWT login). Backend: 8/8 pytest cases pass in /app/backend/tests/test_import_smoke.py — admin login (giftsdates@gmail.com / Admin@GD24!), /auth/me, regular user login (testuser@giftsdates.com / Test@12345), new user registration via POST /api/auth/register, and GET on /users/browse, /wallet/balance, /dates/mine, /matches, /admin/users, /admin/stats, /admin/overview all return non-5xx with valid data. Frontend: Landing page loads at REACT_APP_BACKEND_URL with original luxury-dating design (hero image, Elena card, feature cards, footer). Login modal (data-testid auth-email-input/auth-password-input/auth-submit-button) authenticates admin and redirects to /browse with 'Welcome back!' toast. /admin loads full admin panel with Payouts / Verifications / Reports / Dates / Support / Live locations / Prices / Translations tabs. Regular user navigation verified: /browse (shows seeded profiles — Test User 28 London + Test Import 28 New York), /profile, /wallet (Top up / Withdraw / Monthly Spin & Win), /dates, /matches, /chats all render without JS errors. Signup page (/auth after clicking nav-register-button) renders complete multi-field form with all expected testids (email, password, language, name, birth day/month/year, gender, interest, orientation, location box, bio, phone, SMS toggle, consent). Language switcher (Radix dropdown nav-language-switcher-select) opens list of 20+ languages and switching to Deutsch instantly re-translates header, CTAs and hero copy (verified strings: Loslegen / Anmelden / Registrieren / Finde deinen Seelenverwandten überall auf der Welt). Logout (data-testid nav-logout-button) ends session and redirects to /auth. No console or page errors observed on any route.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_import_smoke.py",
+    "/app/test_reports/pytest/import_smoke.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py /auth/login (982-995) correctly strips 'password' and '_id' from the user dict in response and auto-reactivates PAUSED accounts on login — matches repo-intended behaviour.",
+    "server.py /auth/register (898-980) hashes password via hash_pwd before insert, prevents duplicate emails (400), logs each registration to db.new_users_list, and sends an admin notification email — all original logic preserved from repo.",
+    "ADMIN_EMAILS env resolves is_admin for giftsdates@gmail.com correctly; /admin route is reachable in the SPA and renders the full admin shell. No seed-admin password drift observed (previous iteration_14 referenced Admin@12345 but the correct current admin password per /app/memory/test_credentials.md is Admin@GD24! and it works)."
+  ],
+  "updated_files": ["/app/backend/tests/test_import_smoke.py"],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (landing, admin login, admin panel, user login, 6 app pages, signup form, language switch, logout)"},
+  "test_credentials": "Admin: giftsdates@gmail.com / Admin@GD24! ; User: testuser@giftsdates.com / Test@12345",
+  "seed_data_creation": "test_register_new_user creates one TEST_import_<hex>@example.com user per run via public API (not cleaned up — low volume, prefixed with TEST_ for easy identification).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_import_smoke.py -n 0 -v` for the import smoke regression. The repo was imported verbatim; auth endpoints are the original JWT system at server.py:898-1010 and ADMIN_EMAILS gate is at line 671. Admin password per /app/memory/test_credentials.md is Admin@GD24! (not Admin@12345 as some older iterations reference). Language switcher is a Radix dropdown button (not a native <select>), so use click + menuitem text; it has data-testid=nav-language-switcher-select. Logout testid: nav-logout-button; auth form testids: auth-email-input / auth-password-input / auth-submit-button / nav-login-button / nav-register-button."
+}

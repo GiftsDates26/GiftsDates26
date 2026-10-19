@@ -1,0 +1,39 @@
+{
+  "summary": "Tested iteration-18 VIP calendar features — availability bulk/weekly, slot payload (rates+extra_hour_price), cancelled/declined filtering, mid-date extend (vip_sched + date_bookings), reminders. Backend pytest: 10/10 pass. Frontend Playwright: VipBookings loads under /vip-bookings as VIP user; VipAvailabilityEditor renders with all required test-ids (vip-schedule-manager, vs-avail-tab-days/weekly, vip-schedule-calendar, vs-avail-ranges-add/from-0/to-0, vs-avail-add, vs-avail-weeks, vs-avail-add-weekly, weekly-toggle-{0..6}). weekly-copy-all-{d} only mounts once the weekday is toggled on (expected). Language switcher works — Español translates tabs (Solicitudes/Confirmadas/Pasadas/Disponibilidad/Mis solicitudes), intro, booking card time range 'Inicio HH:MM → Fin HH:MM', buttons (Confirmar/Rechazar).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/cron/tick", "issue": "Does not invoke _vs_tick — only _run_lifecycle and _run_booking_reminders. VIP schedule reminders (reminder_24_sent / reminder_1h_sent) are driven exclusively by the internal _vs_reminder_loop background task (every 60s). Request suggested calling /cron/tick to verify VIP reminders; that will not fire them. Reminders are nevertheless produced in-process (verified via direct _vs_tick() call in test)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VipBookings page", "issues": ["Subheading 'VIP Dates' above the DateBookingList is hardcoded English — not translated when switching to ES/RU/etc. All other labels on the page translate correctly."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_vip_schedule_v18.py",
+    "/app/test_reports/pytest/iter18.xml"
+  ],
+  "action_items": [
+    "Optional: wire _vs_tick into /api/cron/tick (next to _run_lifecycle / _run_booking_reminders) so an external cron can drive VIP-schedule reminders; today it depends on the in-process asyncio loop surviving restarts.",
+    "Minor: translate the 'VIP Dates' subheading on /vip-bookings (currently hardcoded)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 5497 lines — still should be split (vip_schedule.py, vip_profile.py, bookings.py).",
+    "_vs_reminder_loop is only started via @app.on_event('startup'); FastAPI deprecates on_event — migrate to lifespan handler to avoid future breakage.",
+    "VipBookExtend reuses the generic '_charge_extension' which assumes the target has a VIP profile; for date_bookings extend to a non-VIP target this still charges 250/h (default) — document or guard."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_vip_schedule_v18.py"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% of exercised flows (selectors + translations)"},
+  "test_credentials": "VIP user testuser@giftsdates.com / Test@12345 (id b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6); admin giftsdates@gmail.com / Admin@GD24! (used as booker)",
+  "seed_data_creation": "All data seeded by tests is prefixed TEST_ and cleaned up. One pre-existing pending booking (admin → testuser, today+2d 16:00-21:00, 1800 coins) was left untouched. Pre-existing orphan date_booking id=44b752d9-... (status escrow, admin↔testuser same-day) and leftover vip_sched TEST_extend_* from an earlier failing run were deleted during this iteration.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file for iteration-18: /app/backend/tests/test_vip_schedule_v18.py (10 tests, 3.9s). It touches vip_avail, vip_sched, date_bookings, notifications, and the user's prices. The test_extend_in_progress case pre-cleans any today-dated date_bookings for the VIP to avoid SLOT_TAKEN noise from co-tests. _vs_tick is imported and called directly in-process to deterministically verify the 1h reminder; the cron /api/cron/tick endpoint does NOT run it.",
+  "rca of the issue": "N/A — all tested flows green. One missing i18n key ('VIP Dates') and one wiring gap (/cron/tick ≠ _vs_tick) reported as non-blocking."
+}

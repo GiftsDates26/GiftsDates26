@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration-21: validated the three new VIP Bookings features — Today agenda strip, Earnings summary tile, and VIP 'Running late' heads-up. Backend pytest 9/9 pass in /app/backend/tests/test_vip_today_late_earnings.py: (a) GET /api/vip/schedule/me returns {month, earned, held} and values reconcile against Mongo (vip_sched completed_at/cancelled_at + date_bookings released_net/escrow for VIP b486a9ec…); (b) POST /api/vip/schedule/bookings/{bid}/late — 403 for the client (admin), 400 BAD_MINUTES for 7, 404 for unknown id, happy-path persists late={minutes,at} and posts vs_late notification visible via GET /api/notifications for the requester, every allowed value 5/10/15/20/30/45/60 is accepted, 400 NOT_DATE_TIME when status!=confirmed and when start is pushed >3h out. Frontend Playwright on the preview URL as VIP: vs-earnings-tile shows '🪙 375' + '🔒 2,500 · Held until dates finish' (API values match); vs-today-strip renders between header and tabs with two chips vs-today-{id} (sorted by start, +10′ marker shown after late is sent); all six tabs vs-tab-{requests,mine,confirmed,cancelled,past,availability} present; on a confirmed in-window incoming card the VIP sees vs-late-{id}, clicking opens vs-late-panel-{id} with six minute buttons, clicking vs-late-{id}-10 fires toast 'Your client has been notified' and renders vs-late-badge-{id} '⏱ VIP running 10 min late'. As the admin (requester) on /vip-bookings the My Requests card shows the same vs-late-badge-{id} and the Today chip has +10′; the vs-earnings-tile is hidden for non-VIPs. Seeded by mutating vip_sched 59cd396e… to today +30min and restored afterwards.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "RunningLateButton", "issue": "UI minutes array is [5,10,15,30,45,60] — missing 20′ even though the backend accepts 20 per the spec {5|10|15|20|30|45|60}. Add 20 to MINUTES in frontend/src/components/RunningLateButton.jsx for parity.", "selector": "[data-testid='vs-late-{id}-20']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VIP Bookings header", "issues": ["On narrow desktop widths the vs-earnings-tile (min-w 220px) + 4-column stats grid can overflow the right column — consider wrapping stats below the tile on <lg screens."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_vip_today_late_earnings.py",
+    "/app/test_reports/pytest/iter21.xml"
+  ],
+  "action_items": [
+    "Add 20 to MINUTES in RunningLateButton.jsx so the UI exposes the full set the API accepts."
+  ],
+  "critical_code_review_comments": [
+    "_vs_earnings is clean, async, and matches the spec exactly (completed_at/cancelled_at month prefix + VIP date_bookings released_net / escrow sums). Good.",
+    "vs_running_late correctly validates minutes, VIP ownership, status=='confirmed', and the [-3h, end) window using _vs_start_dt/_vs_end_dt which honour booking tz. No regressions.",
+    "TodayStrip.jsx filters by local toKey(new Date()) and the backend returns booking dates in VIP local tz — on cross-tz pairs the client's 'today' may not match the booking date (e.g., VIP tz=UTC, client tz=Asia). Consider computing today in b.tz for the chip filter.",
+    "RunningLateButton MINUTES array is out of sync with the backend-accepted set — minor UX bug (does not include 20).",
+    "server.py still 5704 lines — long-standing refactor flag."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_vip_today_late_earnings.py",
+    "/app/test_reports/iteration_21.json"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Admin/client: giftsdates@gmail.com / Admin@GD24! · VIP: testuser@giftsdates.com / Test@12345 (id b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6).",
+  "seed_data_creation": "During the Playwright run, vip_sched 59cd396e-4b32-43b1-87fa-6ef7f11cebdd was mutated to date=today, start=now+30m, end=now+2h, status=confirmed, tz=UTC; after the UI test it was restored to date=2025-10-17 12:00-13:00 confirmed with 'late' field unset. Backend pytest also temporarily mutates it during the TestRunningLate class and restores at class teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite: /app/backend/tests/test_vip_today_late_earnings.py (needs MONGO_URL/DB_NAME/REACT_APP_BACKEND_URL env). The seed booking 59cd396e-...6ef7f11cebdd is left in state status=confirmed, date=2025-10-17 12:00-13:00 UTC, no 'late' field. Known UI gap: 20′ button is missing in RunningLateButton; backend accepts it (test coverage already asserts). TodayStrip uses local-date comparison, so to seed a visible chip you must set vip_sched.date to the testing browser's local date (not the booking tz date).",
+  "rca of the issue": "N/A — all three new features work. Minor UI mismatch (missing 20′ option) is the only follow-up."
+}

@@ -1,0 +1,28 @@
+{
+  "summary": "Iter-22: tested the new VIP No-Show Evidence feature end-to-end. Backend pytest /app/backend/tests/test_no_show_evidence.py 9/9 PASS: POST /api/vip/schedule/bookings/{id}/no-show as multipart/form-data (note+optional photo) correctly returns 404 unknown, 401/403 unauth, 403 when caller is not the client (requester), 400 NO_SHOW_WINDOW outside start+15min..end, 400 EVIDENCE_REQUIRED when note is empty and no photo, 400 IMAGE_ONLY on non-image upload. Happy-path: refunds full booking coins to the client (coins +N verified), status=cancelled, no_show=true, no_show_report {note, photo, status:'open', created_at} persisted, VIP vs_no_show notification fired. Private file: GET /api/files/{photo} returns 403 without auth, 200 with ?auth=<admin token> (and application/octet or image/*), 200 with Bearer of the uploader (client), 403 for VIP (not uploader/viewer/admin). GET /api/admin/no-show-reports returns {reports:[...]} with client/vip minis, 403 for non-admins. POST /api/admin/no-show-reports/{id}/resolve action=valid keeps the refund and sets status=valid; action=reversed debits up to the refund from client, credits VIP withdrawable, booking status=completed, no_show_reversed_coins set; action=zzz -> 400; resolving twice -> 404. Playwright UI as admin (also the client): seeded a confirmed booking inside the window; vs-no-show-{id} opens vs-no-show-dialog-{id} with vs-no-show-note-{id} / vs-no-show-photo-{id}; empty submit toasts 'Add a short note or a photo'; with note it closes, toasts 'No-show reported — coins refunded', card appears in Cancelled & refused. Then /admin → Dates tab: admin-no-show-reports panel shows admin-no-show-{id} with the client/vip header, admin-no-show-note-{id} rendering the quoted note, admin-no-show-status-{id}=OPEN, buttons admin-no-show-valid-{id} and admin-no-show-reverse-{id}. Clicking Uphold (window.confirm accepted) toasts 'Done' and the status flips to VALID. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_no_show_evidence.py",
+    "/app/test_reports/pytest/iter22.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "vs_no_show: evidence check (`if not note and not photo_path`) runs AFTER the photo has been uploaded to object storage AND inserted into db.files. If a client sends an empty note + non-image photo the IMAGE_ONLY check fires first (good), but if they send empty note + no photo the 400 is correct — however if a client ever sends a photo field but reads 0 bytes (filename present), the file is still uploaded and persisted before the no-note branch; consider moving the EVIDENCE_REQUIRED check before put_object to avoid orphaned uploads.",
+    "admin_no_show_resolve: uses `action: str` as a querystring and raises 400 for unknown values — fine, but a POST with no `action` returns FastAPI 422 (missing param), inconsistent with the 400 for other bad values. Consider defaulting+validating.",
+    "`refund = coins` is written to the doc but there is no separate `taxi_coins` handling here even though the UI copy mentions '(incl. taxi 🪙…)'. If taxi coins are stored elsewhere on the booking, the refund display line in AdminNoShowReports.jsx may be misleading when taxi coins exist but were not actually refunded.",
+    "No max-size check for note length beyond .strip()[:1000] — fine, but photo FILE_TOO_LARGE (10MB) is enforced after reading entire body into memory; acceptable for 10MB cap.",
+    "server.py still 5782 lines — long-standing refactor flag."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_no_show_evidence.py",
+    "/app/test_reports/iteration_22.json"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Admin/client: giftsdates@gmail.com / Admin@GD24! · VIP: testuser@giftsdates.com / Test@12345 (id b486a9ec-21a5-46f2-ac7b-4bd42fcb91e6).",
+  "seed_data_creation": "During the UI run, inserted a vip_sched doc id=TEST_UI_ns_bb061e4247bc (requester=admin, vip=VIP) with date=today, start=now-30min, end=now+30min, status=confirmed, coins=120 and bumped VIP escrow +120. After testing it was cancelled by the UI flow and then fully deleted from db.vip_sched (0 lingering file records). Backend pytest inserts/deletes its own TEST_ns_<uuid> docs within each test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite: /app/backend/tests/test_no_show_evidence.py (needs MONGO_URL/DB_NAME/REACT_APP_BACKEND_URL). Tests seed bookings directly into Mongo (requester=admin, vip=b486a9ec…) placed inside start+15..end window; they clean up vip_sched docs on teardown. To re-seed a UI booking in the no-show window: insert a vip_sched doc with status='confirmed', date=today UTC, start=now-30m, end=now+30m, tz='UTC' and bump the VIP user's escrow by coins. Admin UI panel lives on /admin → Dates tab; data-testid is 'admin-no-show-reports'.",
+  "rca of the issue": "N/A — feature works as spec'd. Only minor code-review suggestions above (ordering of EVIDENCE_REQUIRED vs put_object to avoid orphan uploads)."
+}

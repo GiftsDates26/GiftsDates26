@@ -1,0 +1,24 @@
+{
+  "summary": "Verified updated VIP 'Show VIP on my main profile' rule end-to-end. Backend: 9/9 pytest cases pass (test_vip_show_on_main.py). Core new assertions: non-VIP viewer sees Lena with is_vip=false AND is_premium=true on both main-feed list and GET /api/profiles/{lenaId}; VIP viewer (admin) sees is_vip=true on both; vip_only + q=Lena search returns Lena for VIP viewer and not for non-VIP viewer; toggling show_on_main=true flips non-VIP viewer to is_vip=true, then restored to false and re-verified. Frontend: /browse?q=Lena shows profile-card-vip-badge for admin and only profile-card-premium-badge (no VIP) for plain_viewer. /profile/{lenaId} shows profile-view-vip-badge for admin and profile-view-premium-badge for plain_viewer. VipEditor note (vip-show-on-main-note) on Lena's /profile reads exactly: 'Off: only VIP members see your VIP status and can find you as VIP in search. Everyone else sees you as Premium.' Lena vip.show_on_main left as False (restored).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_vip_show_on_main.py",
+    "/app/test_reports/pytest/vip_show_on_main.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py list_profiles (~1681): vip_only filter adds {'vip.show_on_main': {'$ne': False}} only when viewer is not VIP — correct.",
+    "server.py list_profiles main-feed loop (~1748-1760): is_vip(p) now used for top/lite/rest buckets so VIP members without premium_until still receive is_vip=true for VIP viewers; non-VIP viewers get is_vip=false AND is_premium=true when show_on_main is off — matches spec.",
+    "server.py get_profile (~1886): same hide-and-promote-to-premium applied; owner (pid==user.id) and VIP viewer paths untouched — correct.",
+    "i18n key vip_show_on_main_off updated to the new copy and used in VipEditor.jsx vip-show-on-main-note element."
+  ],
+  "updated_files": ["/app/backend/tests/test_vip_show_on_main.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (6/6 UI assertions)"},
+  "test_credentials": "VIP admin: giftsdates@gmail.com/Admin@12345 ; Non-VIP premium viewer: plain_viewer@example.com/Test@12345 ; Hidden VIP member: ll_tester@example.com/Test@12345 (vip.show_on_main=false)",
+  "seed_data_creation": "No new seed data. Toggle test flips show_on_main True then restores to False; final assertion test_restored_to_false confirms persisted state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Lena id=0be0c2a0-cbb3-480c-b785-533dff4fb64e currently has vip.show_on_main=False and NO premium_until (removed per iteration_13 context). Non-VIP viewers now observe is_premium=true for her through the new backend promotion rule (not via premium_until). Frontend login route is /auth; preview URL per frontend/.env is https://repo-site-restore.preview.emergentagent.com.",
+  "rca of the issue": "N/A — fix verified. The backend correctly: (a) hides VIP badge from non-VIP viewers via show_on_main=false, (b) promotes such members to Premium (is_premium=true) for the non-VIP viewer so they display as Premium rather than disappearing, (c) excludes them from vip_only search for non-VIP viewers while keeping VIP viewers' discovery intact, and (d) applies is_vip(p) across all feed buckets so VIP members without premium_until are still badged for VIP viewers."
+}

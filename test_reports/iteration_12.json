@@ -1,0 +1,24 @@
+{
+  "summary": "Tested VIP 'Show VIP on my main profile' visibility rule end-to-end. Backend: 9/9 pytest cases pass covering vip_only search filtering (visible to VIP viewer, hidden from non-VIP), main-feed is_vip badge hiding for non-VIP viewers, profile view is_vip hiding, owner self-view unaffected, and PUT /api/vip/profile toggle flow (True re-enables discoverability for non-VIP, then restored to False). Frontend: VipEditor on /profile shows vip-show-on-main-row INSIDE vip-publish-box with the exact note text 'Off: no one can see your VIP status, except VIP members — they can still find you as VIP in search.' and switch unchecked. Browse page: Lena card has VIP badge + red border for VIP admin viewer, and only a Premium badge (no VIP) for plain non-VIP premium viewer. Lena's vip.show_on_main restored to False at test suite end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_vip_show_on_main.py",
+    "/app/test_reports/pytest/vip_show_on_main.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py list_profiles (~1681) correctly adds {'vip.show_on_main': {'$ne': False}} to vip_only filter only when viewer is not VIP — matches spec.",
+    "server.py list_profiles main-feed loop (~1757) sets is_vip=False for non-VIP viewers when show_on_main is off — spec compliant.",
+    "server.py get_profile (~1886) hides is_vip for non-VIP viewers (owner & VIP viewers unaffected) — correct.",
+    "VipEditor.jsx: vip-show-on-main-row is nested inside vip-publish-box with correct i18n key vip_show_on_main_off matching the required note text."
+  ],
+  "updated_files": ["/app/backend/tests/test_vip_show_on_main.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (all required UI assertions passed)"},
+  "test_credentials": "VIP: giftsdates@gmail.com/Admin@12345 ; Non-VIP premium: plain_viewer@example.com/Test@12345 ; Target: ll_tester@example.com/Test@12345",
+  "seed_data_creation": "No seed changes persisted. Test flipped Lena vip.show_on_main True->False at end and the final 'test_restored_to_false' assertion confirms Mongo state is show_on_main=False as required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression at /app/backend/tests/test_vip_show_on_main.py (9 tests). /api/profiles returns a dict with items[]; account for that when writing search tests. Lena id = 0be0c2a0-cbb3-480c-b785-533dff4fb64e, show_on_main currently False in Mongo. plain_viewer has premium_until so can use q= search but is not VIP.",
+  "rca of the issue": "N/A — feature already correctly implemented in server.py and VipEditor.jsx. Behaviour verified matches the clarified bug fix: non-VIP viewers cannot see Lena's VIP badge on main feed/profile and cannot find her via vip_only search, while VIP viewers continue to see her as VIP in both."
+}

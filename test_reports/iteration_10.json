@@ -1,0 +1,25 @@
+{
+  "summary": "End-to-end tested the two new features: Report Replies and SOS Emergency Button. Backend pytest (test_report_reply_sos.py): 13 passed, 1 xfailed. Covered: /api/dates/report/{bid}/reply — reporter 403, min-details 400, 404 missing booking, happy path with photo upload (/api/upload) + GET verify in Mongo + reply.photos stored, duplicate 409 ALREADY_REPLIED; private file access on the reply photo — anon 403, owner (reported user) 200, admin 200; SOS — auth required, invalid coords 400, happy path without coords (lat/lng null, status open), happy path with coords; admin SOS — non-admin 403, admin lists alert, admin resolve 200 then 404 on repeat, DB status flips to resolved. The xfail documents that the backend sos_alert endpoint does NOT auto-enable live_location sharing with support (frontend LiveLocation.jsx handles that via a follow-up POST /live-location, which was verified in the browser flow). Frontend Playwright: logged in as ll_tester via token injection (gd_token in localStorage), /dates shows reported-block-ll-test-1 with reasons + original details, reply-open-ll-test-1 opens reply-form-ll-test-1 (0 reason chips, details textarea, photo-add, photo-input, submit), after submit reply-sent-ll-test-1 appears and toast 'SOS sent/Reply sent' shows. sos-block-ll-test-1 and sos-btn-ll-test-1 render inside the live-location card; clicking triggers POST /api/sos/booking/ll-test-1 and TWO POST /api/live-location/booking/ll-test-1 calls (auto-share with support, matching the spec); 'SOS sent' toast visible. Admin at /admin > Dates tab shows admin-booking-reply-ll-test-1 with the exact reply text; Admin > Live locations shows admin-sos-{id} card with map and admin-sos-resolve-{id} — clicking the resolve button removes the card and shows 'Marked resolved' toast. Seed data (ll-test-1 open report, no reply; rp-test-2 started) restored at the end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_report_reply_sos.py",
+    "/app/test_reports/pytest/report_reply_sos.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/api/sos/{kind}/{did} does NOT itself set live_location.{uid}.to_support=true server-side; the auto-sharing promise relies entirely on the frontend making a second POST /live-location/... call. If a non-browser client (or a user who denies geolocation) presses SOS, support will NOT see them on the live-locations map. Consider having sos_alert flip to_support=true (and persist last-known coords if provided) atomically in the booking's live_location map so the admin tab shows them even without the frontend follow-up.",
+    "/api/dates (list_dates) returns the raw booking.report dict for both parties, including the nested report.reply.details and report.reply.photos. The reporter can therefore read the reported person's reply text and private-photo storage paths via /api/dates even though the UI hides it. _report_view() exists specifically to sanitize what each viewer sees — route list_dates through it (or strip report.reply for the reporter) to actually enforce the privacy intent.",
+    "server.py is now ~5.2k LOC; splitting dates/bookings/admin/sos into separate routers remains advisable.",
+    "InviteDates POST /invites/{did}/report still has no ALREADY_REPORTED guard (previously flagged in iteration_9)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_report_reply_sos.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin giftsdates@gmail.com / Admin@12345; User ll_tester@example.com / Test@12345",
+  "seed_data_creation": "ll-test-1 reset to confirmed + open report (no reply) scheduled at 07:01 UTC today; rp-test-2 reset to accepted/started; sos_alerts for ll-test-1 wiped. All done after tests so subsequent iterations find the documented state.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_report_reply_sos.py uses -n 0 effectively (one worker) because the module-scoped autouse _reset_seed wipes sos_alerts and would race the TestSos class under xdist LoadScope. If re-running under default xdist, invoke with `-n 0`. The reporter-leak concern on /api/dates (see critical_code_review_comments) is a potential privacy bug not yet fixed; main agent may want to sanitize report.reply before returning to the reporter."
+}

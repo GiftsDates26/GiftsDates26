@@ -1,0 +1,8 @@
+crons:
+  - name: date-reminders
+    description: "Sends 24h and 1h date reminders (in-app + email) and runs date lifecycle every 15 min"
+    cron: "*/15 * * * *"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/tick"
+    method: POST
+    enabled: true
