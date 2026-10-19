@@ -5156,7 +5156,7 @@ class InviteLocationReq(BaseModel):
 class InviteTaxiReq(BaseModel):
     amount: int
 class PickupAddrReq(BaseModel):
-    pickup_address: str
+    pickup_address: Optional[str] = ""
     venue: Optional[str] = ""
     street: Optional[str] = ""
     lat: Optional[float] = None
@@ -5181,9 +5181,8 @@ async def _geocode_address(street: str, city: str, postal: str, country: str, ve
     if not re.search(r"\d", street):
         raise HTTPException(400, "ADDRESS_NUMBER_REQUIRED")
     key = "|".join(x.lower() for x in (street, city, postal, country))
-    hit = await db.geo_cache.find_one({"key": key}, {"_id": 0})
+    hit = await db.geo_cache.find_one({"key": key, "ok": True}, {"_id": 0})
     if hit:
-        if not hit.get("ok"): raise HTTPException(400, "ADDRESS_NOT_FOUND")
         return hit["result"]
     queries = [{"street": street, "city": city, "postalcode": postal, "country": country},
                {"street": street, "city": city, "country": country},
@@ -5204,7 +5203,6 @@ async def _geocode_address(street: str, city: str, postal: str, country: str, ve
         logging.warning(f"geocode failed: {e}")
         raise HTTPException(503, "ADDRESS_CHECK_UNAVAILABLE")
     if not found:
-        await db.geo_cache.insert_one({"key": key, "ok": False, "created_at": _iso()})
         raise HTTPException(400, "ADDRESS_NOT_FOUND")
     res = {"lat": float(found["lat"]), "lng": float(found["lon"]), "display_name": found.get("display_name", "")}
     await db.geo_cache.insert_one({"key": key, "ok": True, "result": res, "created_at": _iso()})

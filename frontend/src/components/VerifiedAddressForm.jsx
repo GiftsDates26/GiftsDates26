@@ -35,7 +35,7 @@ export default function VerifiedAddressForm({ value, onChange, testid = "vaddr" 
   return (
     <div className="w-full space-y-2" data-testid={testid}>
       <Input data-testid={`${testid}-venue`} value={v.venue || ""} onChange={e => onChange({ ...v, venue: e.target.value })} placeholder={t("av_venue_ph", lang)} className="bg-white/5 border-white/10 h-9" />
-      <AddressPicker value={v} onChange={change} />
+      <AddressPicker value={v} onChange={change} testid={`${testid}-addr`} />
       <p className="text-[11px] text-slate-500">{t("av_required", lang)}</p>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" data-testid={`${testid}-verify`} disabled={busy || missing || v.verified} onClick={verify} variant="outline" className="h-9 bg-sky-500/10 border-sky-500/40 text-sky-200 hover:bg-sky-500/20">

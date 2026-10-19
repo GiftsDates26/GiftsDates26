@@ -1,0 +1,42 @@
+{
+  "summary": "Tested verified addresses (geocoding) on the backend and the UI. Backend: 13/13 pytest pass. /geo/verify, invite location (inviter) and pickup address (recipient) all reject missing fields, a street with no number and unknown addresses. Real addresses are accepted, and the lat/lng saved come from the geocoder; lat/lng sent by the client are ignored. UI on /dates, typing the address manually: location form (My Requests tab) and pickup form (Requests tab) work end to end. The submit button stays disabled until all fields are filled and 'Check address on map' succeeds. Editing street/city/postal resets the check. The error message shows for not-found and no-number addresses. Submitting moves the date to the next status and the data is saved. One HIGH bug: in 'Search on map' mode, picking a result puts the full OSM display_name in the street field, so the check always fails with ADDRESS_NOT_FOUND.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/invites/{id}/pickup/address", "issue": "PickupAddrReq.pickup_address is a required str. API clients that send only venue/street/city/postal/country get 422 'Field required'. Make it Optional and build it on the server, which already happens."},
+      {"endpoint": "_geocode_address", "issue": "Street-only queries (#2 and #3) do not use the postal code. When OSM returns no postcode for a result, the postal check is skipped, so a wrong postal code can be accepted. Failed lookups are cached forever in db.geo_cache with no TTL, so a temporary miss stays a 'not found'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AddressPicker OsmAddressPicker (map mode) + VerifiedAddressForm", "issue": "Picking a search result calls pick(), which sets address = r.display_name (for example 'Toronto City Hall, 100, Queen Street West, Yonge-Bay Corridor, ..., Toronto, Ontario, M5H 2N2, Canada'). That fills the 'Street & number' field, and /geo/verify then returns ADDRESS_NOT_FOUND. Map mode can never pass the check. Reproduced in the UI on seed-pick-1 and confirmed with curl.", "selector": "[data-testid=address-mode-map], [data-testid=address-search-input], [data-testid=address-results]", "priority": "HIGH"},
+      {"component": "OsmAddressPicker", "issue": "After you pick a result, setQ(display_name) starts a new search, so the results dropdown opens again with the same item.", "selector": "[data-testid=address-results]", "priority": "LOW"},
+      {"component": "VerifiedAddressForm / AddressPicker", "issue": "The manual field testids (address-manual-street/city/postal/country, address-mode-*) are not tied to a specific card. When several dates are in the same status they repeat on the page. Prefix them with the form testid.", "selector": "[data-testid=address-manual-street]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/dates DateCard", "issues": ["The transport line shows the raw status value, for example 'pickup: address_selected' and 'pickup: pending'. Replace it with a readable label."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_verified_address.py", "/app/test_reports/pytest/pytest_verified_address.xml"],
+  "action_items": [
+    "HIGH: Fix map-mode pick in OsmAddressPicker. Set address to `${a.house_number||''} ${a.road||a.pedestrian||''}`.trim() and country to the English name (the request uses accept-language=lang, so the country can come back in another language and not match CountrySelect). Another option: the server tries a free-text query with only the street first.",
+    "Make PickupAddrReq.pickup_address Optional (default \"\").",
+    "Stop the OSM results dropdown from reopening after a pick (skip the search when q equals the picked value).",
+    "Prefix the AddressPicker manual-field testids with the form testid.",
+    "Show a readable transport status label instead of the raw value."
+  ],
+  "critical_code_review_comments": [
+    "Map mode cannot pass the check because display_name is used as the street (see the HIGH bug above).",
+    "Map mode with the Google picker is untested: GMAPS_KEY is not set in frontend/.env.",
+    "Negative geo_cache entries have no TTL.",
+    "Changing the venue correctly does not reset the check, and clearing the venue disables submit. Behavior is correct."
+  ],
+  "updated_files": ["/app/backend/tests/test_verified_address.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "85% (manual entry flows pass; map-search flow fails)"},
+  "seed_data_creation": "Created dates ui-loc-1 (testuser inviter, now LOCATION_PROPOSED) and ui-pick-1 (testuser recipient, now PICKUP_ADDRESS_SELECTED) with seed:true. seed-pick-1 is still PICKUP_ADDRESS_PENDING. The pytest file creates and deletes its own TEST_va_* dates.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the pytest file with -n 0, or run it as written; cleanup is per id. The location form is under the dates-tab-mine tab and the pickup form under the default Requests tab. Inside a card, scope the selectors to the card locator: address-manual-* testids repeat. The country is picked with address-manual-country -> address-manual-country-search -> address-manual-country-option-Canada.",
+  "rca of the issue": "OsmAddressPicker.pick() writes r.display_name into value.address. VerifiedAddressForm sends it as 'address' to /geo/verify. _geocode_address passes it as the structured 'street' param, and as part of a free-text q joined with city/postal/country. Nominatim finds nothing for either, so the result is ADDRESS_NOT_FOUND. Fix: use house_number + road as the street."
+}

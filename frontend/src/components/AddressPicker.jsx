@@ -4,6 +4,7 @@ import { Input } from "./ui/input";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
 import CountrySelect from "./CountrySelect";
+import { COUNTRIES } from "../lib/countries";
 
 const GMAPS_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
@@ -91,8 +92,9 @@ function OsmAddressPicker({ value, onChange, testid }) {
   const { lang } = useApp();
   const [q, setQ] = useState(value?.address || "");
   const [results, setResults] = useState([]);
+  const picked = useRef("");
   useEffect(() => {
-    if (q.trim().length < 3) { setResults([]); return; }
+    if (q.trim().length < 3 || q === picked.current) { setResults([]); return; }
     const id = setTimeout(async () => {
       try {
         const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&accept-language=${lang}&q=${encodeURIComponent(q)}`);
@@ -103,8 +105,12 @@ function OsmAddressPicker({ value, onChange, testid }) {
   }, [q, lang]);
   const pick = (r) => {
     const a = r.address || {};
-    onChange({ address: r.display_name, lat: parseFloat(r.lat), lng: parseFloat(r.lon), city: a.city || a.town || a.village || a.municipality || a.county || value?.city || "", postal_code: a.postcode || "", country: a.country || "", venue: value?.venue || a.amenity || a.shop || a.tourism || "" });
-    setQ(r.display_name); setResults([]);
+    const cc = (a.country_code || "").toUpperCase();
+    const flag = cc.length === 2 ? String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : "";
+    const country = COUNTRIES.find(c => c.flag === flag)?.name || a.country || "";
+    const street = [a.road || a.pedestrian || a.footway || "", a.house_number || ""].filter(Boolean).join(" ");
+    onChange({ address: street || r.display_name, lat: parseFloat(r.lat), lng: parseFloat(r.lon), city: a.city || a.town || a.village || a.municipality || a.county || value?.city || "", postal_code: a.postcode || "", country, venue: value?.venue || a.amenity || a.shop || a.tourism || "" });
+    picked.current = r.display_name; setQ(r.display_name); setResults([]);
   };
   return (
     <div className="relative w-full">
@@ -123,42 +129,42 @@ function OsmAddressPicker({ value, onChange, testid }) {
 }
 
 export default function AddressPicker(props) {
-  const { value, onChange, manualFields = true } = props;
+  const { value, onChange, manualFields = true, testid: tid = "address" } = props;
   const { lang } = useApp();
   const SearchPicker = GMAPS_KEY ? GoogleAddressPicker : OsmAddressPicker;
   const [mode, setMode] = useState("manual"); // "manual" (default, no maps) | "map" (optional)
   const set = (patch) => onChange({ ...(value || {}), ...patch });
 
   // When the parent already renders its own manual address inputs, just show the search picker.
-  if (!manualFields) return <SearchPicker testid="address" {...props} />;
+  if (!manualFields) return <SearchPicker {...props} testid={tid} />;
 
   return (
     <div className="w-full space-y-2">
       <div className="inline-flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs" role="tablist">
-        <button type="button" data-testid="address-mode-manual" onClick={() => setMode("manual")}
+        <button type="button" data-testid={`${tid}-mode-manual`} onClick={() => setMode("manual")}
           className={`px-3 py-1.5 rounded-md transition-colors ${mode === "manual" ? "bg-rose-500/25 text-rose-100" : "text-slate-400 hover:text-slate-200"}`}>
           {t("loc_enter_manually", lang)}
         </button>
-        <button type="button" data-testid="address-mode-map" onClick={() => setMode("map")}
+        <button type="button" data-testid={`${tid}-mode-map`} onClick={() => setMode("map")}
           className={`px-3 py-1.5 rounded-md transition-colors ${mode === "map" ? "bg-rose-500/25 text-rose-100" : "text-slate-400 hover:text-slate-200"}`}>
           <MapPin size={12} className="inline me-1" />{t("loc_use_map", lang)}
         </button>
       </div>
 
       {mode === "map" ? (
-        <SearchPicker testid="address" {...props} />
+        <SearchPicker {...props} testid={tid} />
       ) : (
         <p className="text-[11px] text-slate-400">{t("loc_manual_hint", lang)}</p>
       )}
 
       {/* Manual / editable fields — always available so the address can be completed with or without maps */}
       <div className="grid grid-cols-1 gap-2">
-        <Input data-testid="address-manual-street" value={value?.address || ""} onChange={(e) => set({ address: e.target.value })} placeholder={t("loc_street", lang)} className="bg-white/5 border-white/10 h-9" />
+        <Input data-testid={`${tid}-manual-street`} value={value?.address || ""} onChange={(e) => set({ address: e.target.value })} placeholder={t("loc_street", lang)} className="bg-white/5 border-white/10 h-9" />
         <div className="grid grid-cols-2 gap-2">
-          <Input data-testid="address-manual-city" value={value?.city || ""} onChange={(e) => set({ city: e.target.value })} placeholder={t("city", lang)} className="bg-white/5 border-white/10 h-9" />
-          <Input data-testid="address-manual-postal" value={value?.postal_code || ""} onChange={(e) => set({ postal_code: e.target.value })} placeholder={t("postal_code", lang)} className="bg-white/5 border-white/10 h-9" />
+          <Input data-testid={`${tid}-manual-city`} value={value?.city || ""} onChange={(e) => set({ city: e.target.value })} placeholder={t("city", lang)} className="bg-white/5 border-white/10 h-9" />
+          <Input data-testid={`${tid}-manual-postal`} value={value?.postal_code || ""} onChange={(e) => set({ postal_code: e.target.value })} placeholder={t("postal_code", lang)} className="bg-white/5 border-white/10 h-9" />
         </div>
-        <CountrySelect value={value?.country || ""} onChange={(c) => set({ country: c })} lang={lang} testid="address-manual-country" />
+        <CountrySelect value={value?.country || ""} onChange={(c) => set({ country: c })} lang={lang} testid={`${tid}-manual-country`} />
       </div>
     </div>
   );
