@@ -1,0 +1,30 @@
+{
+  "summary": "Smoke test of the re-imported GiftsDates app with the new Stripe sandbox. Backend: 16/16 pytest passed (health, register->me->login, duplicate register 400, wrong pwd 401, admin is_admin, meta/wallet/me, checkout for coin pkg/custom/premium/premium_lite/vip returns cs_test_ + checkout.stripe.com URL, unknown pkg 400, webhook bad signature 400). Frontend: landing renders with the original luxury dark/rose/gold look; user login goes to /browse; browse, matches, chats, dates, vip-bookings, profile and wallet all load with no page errors or 5xx. Paid end to end in the browser: Wallet > Top up > Small Talk ($9.99) > Stripe Checkout (Link/managed payments UI) > card 4242 4242 4242 4242 > back on /payment/success 'Payment successful' > balance went from 0 to 100 coins. Polling payment status again did not add coins a second time (fulfilled=true). Premium ($29.99), VIP ($49.99/month subscription) and Premium-Lite ($14.99) buttons all go to Stripe checkout. Admin login works, the Admin button shows on Wallet, and /admin loads with all tabs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/stripe/webhook", "issue": "Not verified that a webhook endpoint is registered in the new Stripe sandbox for this preview URL. Coins and Premium are credited through /api/payments/status polling, so they work without it. But stripe_subscription_id/stripe_customer_id for VIP, plus invoice.paid renewals, invoice.payment_failed and customer.subscription.deleted, are only handled in the webhook. Without a registered webhook the VIP auto-renew/cancel UI (vipAutoRenew needs stripe_subscription_id) and monthly renewals will not work."},
+      {"endpoint": "/api/payments/status/{session_id}", "issue": "No auth required (as in the original repo). Low risk because session IDs can't be guessed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_reimport_smoke_stripe.py", "/app/test_reports/pytest/pytest_results_iter26.xml"],
+  "action_items": [
+    "Optional: make sure a Stripe webhook endpoint (<REACT_APP_BACKEND_URL>/api/stripe/webhook) is registered in the sandbox with checkout.session.completed, invoice.paid, invoice.payment_failed and customer.subscription.deleted, and that its secret matches STRIPE_WEBHOOK_SECRET. VIP recurring billing depends on it.",
+    "Optional: the older test files in /app/backend/tests (e.g. test_stripe_checkout.py) hardcode the old preview URL as a default and the old admin password Admin@GD24!. Update them to use the env URL and the credentials in /app/memory/test_credentials.md."
+  ],
+  "critical_code_review_comments": [
+    "server.py is very large (>5000 lines). It is the original repo code, so it was left as is.",
+    "VIP fulfillment through status polling does not save stripe_subscription_id; only the webhook does. Consider retrieving session.subscription in payment_status as a fallback."
+  ],
+  "updated_files": ["/app/backend/tests/test_reimport_smoke_stripe.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "testuser@giftsdates.com now has 100 coins from a real sandbox test-card purchase (small_talk). The test_xxxx@example.com user created by pytest was deleted. Several unpaid 'initiated' payment_transactions rows remain from the checkout tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Stripe checkout uses managed_payments (Link UI). To pay in Playwright: mouse-click the bounding box of #payment-method-label-card (a normal click is intercepted or reported outside the viewport); fill #cardNumber, #cardExpiry, #cardCvc, #billingName; select #billingCountry=US; fill #billingAddressLine1 and press Escape to close the Google autocomplete; fill #billingLocality and #billingPostalCode; select #billingAdministrativeArea=NY; fill input[type=tel] with a phone (required by Link); then click [data-testid=hosted-payment-submit-button]. Login testids: auth-email-input, auth-password-input, auth-submit-button."
+}

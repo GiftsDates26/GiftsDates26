@@ -65,3 +65,8 @@ React (CRA/craco) + FastAPI (server.py, ~4.9k lines) + MongoDB. JWT email/passwo
 - Pick-up flow v3 (2026-06): inviter /pickup/offer (needs pending taxi) -> VIP /pickup/address (location+time+note) -> inviter /pickup/accept, or taxi/send (pickup taxi_instead), or cancel date. iteration_23 100%.
 - Taxi full refund on cancel everywhere (2026-06): regular date_bookings inviter cancel splits only date coins, taxi refunded 100%; invites _refund split excludes confirmed taxi_amount (refunded fully); VIP already. Previews (CancelPreviewDialog taxi prop, InviteDates refuseSplit) + commit_body note updated.
 - Taxi line in cancel preview + client running late (2026-06): CancelPreviewDialog rows cancel-preview-taxi / cancel-preview-date-back; /late works for both sides (late vs client_late), badges vs-late-badge / vs-client-late-badge. iteration_24 100%.
+
+## Re-import (2026-06, Giftsdates25)
+- Re-imported from https://github.com/Giftsdates25/Giftsdates25 as-is (all code, styling, assets). Env re-provisioned: JWT_SECRET, EMERGENT_LLM_KEY, ADMIN_EMAILS, new Stripe claimable sandbox acct_1UR1hhAtwb0iGHrY (CA, test mode).
+- Admin giftsdates@gmail.com + test user created (test_credentials.md). iteration_26: backend 16/16, frontend pass, real test payment credited coins.
+- Not configured: email (Resend), Twilio SMS, Google Maps key. Old users/data live in the old database (not in repo).
