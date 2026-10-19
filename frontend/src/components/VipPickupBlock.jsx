@@ -3,7 +3,7 @@ import { Car, Loader2, MapPin, Check, X, Send, Ban, Pencil, Hourglass } from "lu
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import DirectionsButton from "./DirectionsButton";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -32,6 +32,7 @@ function AddressForm({ b, onDone, onClose, lang }) {
     <div className="space-y-2.5" data-testid={`vs-pickup-form-${b.id}`}>
       <p className="text-xs text-slate-300">{t("pu_addr_intro", lang)}</p>
       <VerifiedAddressForm value={loc} onChange={setLoc} needVenue={false} testid={`vs-pickup-addr-${b.id}`} />
+      <UnverifiedNote show={loc.confirmed && !loc.verified} testid={`vs-pickup-unverified-${b.id}`} />
       <div className="flex gap-2">
         <div className="w-28 shrink-0">
           <label className="text-[11px] text-slate-400">{t("pu_time", lang)}</label>

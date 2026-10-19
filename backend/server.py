@@ -602,6 +602,7 @@ class VideoCallReq(BaseModel):
 
 class DateBookingReq(BaseModel):
     address_confirmed: bool = False
+    unverified: Optional[bool] = None
     target_id: str
     venue: str
     city: str
@@ -2655,7 +2656,6 @@ async def book_date(req: DateBookingReq, user=Depends(get_current_user)):
     target = await db.users.find_one({"id": req.target_id})
     if not target: raise HTTPException(404, "Recipient not found")
     if target.get("account_status") in ("PAUSED", "PENDING_DELETION"): raise HTTPException(400, "RECIPIENT_UNAVAILABLE")
-    await _apply_geo(req, venue=req.venue)
     now = datetime.now(timezone.utc).isoformat()
     # 3 mandatory custom date-idea options proposed by the inviter
     activities = [str(a).strip() for a in (req.activities or [])]
@@ -2663,6 +2663,7 @@ async def book_date(req: DateBookingReq, user=Depends(get_current_user)):
     if len(activities) != 3:
         raise HTTPException(400, "ACTIVITIES_REQUIRED")
     activities = [a[:120] for a in activities]
+    await _apply_geo(req, venue=req.venue)
     day = (req.local_day or req.scheduled_at)[:10]
     wins = day_windows(target, day)
     if wins is not None and not wins: raise HTTPException(400, "DAY_UNAVAILABLE")
@@ -2681,7 +2682,7 @@ async def book_date(req: DateBookingReq, user=Depends(get_current_user)):
     await _assert_slot_free(target, day, start_min, _pdt(req.scheduled_at))
     booking_id = str(uuid.uuid4())
     doc = {"id": booking_id, "from_id": user["id"], "to_id": req.target_id,
-           "venue": req.venue, "city": req.city, "address": (req.address or "").strip(), "postal_code": (req.postal_code or "").strip(), "country": (req.country or "").strip(), "lat": req.lat, "lng": req.lng, "scheduled_at": req.scheduled_at,
+           "venue": req.venue, "city": req.city, "address": (req.address or "").strip(), "postal_code": (req.postal_code or "").strip(), "country": (req.country or "").strip(), "lat": req.lat, "lng": req.lng, "unverified": bool(req.unverified), "scheduled_at": req.scheduled_at,
            "local_time": local_t, "local_day": day, "slot_from": slot_from, "slot_to": slot_to,
            "coins": req.coins, "status": "escrow", "photo_url": None,
            "activities": activities, "selected_activity": None,
@@ -3706,7 +3707,7 @@ async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
     bid = str(uuid.uuid4())
     doc = {"id": bid, "from_id": user["id"], "to_id": recipient_id, "venue": req.venue or "VIP", "city": req.city or "-",
            "address": (req.address or "").strip(), "postal_code": (req.postal_code or "").strip(), "country": (req.country or "").strip(),
-           "lat": req.lat, "lng": req.lng, "place": req.place, "scheduled_at": req.scheduled_at,
+           "lat": req.lat, "lng": req.lng, "unverified": bool(req.unverified), "place": req.place, "scheduled_at": req.scheduled_at,
            "coins": req.coins, "extra_hours": req.extra_hours, "extra_coins": extra_coins,
            **({"duration_min": dur_min, "vip_length": req.vip_length, "local_day": req.scheduled_at[:10],
                "slot_from": req.scheduled_at[11:16], "slot_to": _min_to_hm(_hm_to_min(req.scheduled_at[11:16]) + dur_min)} if dur_min else {}),
@@ -3732,6 +3733,7 @@ class VipAvailReq(BaseModel):
 
 class VipSchedBookReq(BaseModel):
     address_confirmed: bool = False
+    unverified: Optional[bool] = None
     date: str
     start: str
     end: str
@@ -3748,7 +3750,7 @@ class VipSchedBookReq(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
 
-LOC_KEYS = ("address", "city", "postal_code", "country", "lat", "lng")
+LOC_KEYS = ("address", "city", "postal_code", "country", "lat", "lng", "unverified")
 
 class VipOwnPlaceReq(BaseModel):
     address_confirmed: bool = False
@@ -4191,7 +4193,7 @@ async def vs_pickup_address(bid: str, req: VipPickupReq, user=Depends(get_curren
     if (b.get("pickup") or {}).get("status") not in ("offered", "address_set"): raise HTTPException(400, "NO_PICKUP_OFFER")
     geo = await _apply_geo(req)
     tm = req.time if req.time and re.fullmatch(r"\d{2}:\d{2}", req.time) else b["start"]
-    pickup = {**b["pickup"], **req.model_dump(exclude={"time"}), "address": req.address.strip()[:300], "note": (req.note or "")[:300],
+    pickup = {**b["pickup"], **req.model_dump(exclude={"time", "address_confirmed"}), "address": req.address.strip()[:300], "note": (req.note or "")[:300],
               "time": tm, "unverified": geo["unverified"], "status": "address_set", "address_at": datetime.now(timezone.utc).isoformat()}
     await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup": pickup}})
     await notify(b["requester_id"], "vs_pickup", "Pick-up location added 📍",
@@ -5270,6 +5272,7 @@ async def _apply_geo(req, venue=None):
     """Validate a request's address fields against the map and overwrite lat/lng with the geocoder's."""
     geo = await _geocode_address(req.address, req.city, req.postal_code, req.country, venue=venue, confirmed=getattr(req, "address_confirmed", False))
     req.lat, req.lng = geo["lat"], geo["lng"]
+    if hasattr(req, "unverified"): req.unverified = geo["unverified"]
     return geo
 
 @api.post("/geo/verify")

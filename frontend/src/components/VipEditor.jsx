@@ -13,7 +13,7 @@ import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import { VIP_CATEGORIES, VIP_PLACES, PRICE_KEYS, svcLabel, catTitle, placeLabel, priceLabel, extraLabel, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import { GENDERS } from "./ProfileDetailsForm";
 import CountrySelect from "./CountrySelect";
@@ -193,11 +193,11 @@ export default function VipEditor() {
         dick_girth: (sepDickGirth || "").trim(),
         show_on_main: showOnMain,
       };
-      await api.put("/vip/profile", payload);
       if (places.includes("own")) {
         if (!addressReady(ownPlace, false)) throw { response: { data: { detail: "ADDRESS_FIELDS_REQUIRED" } } };
         await api.put("/vip/own-place", addrPayload(ownPlace));
       }
+      await api.put("/vip/profile", payload);
       await refreshUser();
       toast.success(t("vip_saved_toast", lang));
     } catch (e) { const d = e.response?.data?.detail; toast.error(addrErrKey(d) ? t(addrErrKey(d), lang) : d || "Ошибка"); } finally { setBusy(false); }
@@ -411,6 +411,7 @@ export default function VipEditor() {
             <div className="text-xs font-semibold text-amber-200">{t("own_addr_title", lang)}</div>
             <p className="text-[11px] text-slate-400">{t("own_addr_note", lang)}</p>
             <VerifiedAddressForm value={ownPlace} onChange={setOwnPlace} needVenue={false} testid="vip-own-place-addr" />
+            <UnverifiedNote show={ownPlace.confirmed && !ownPlace.verified} testid="vip-own-place-unverified" />
             {!ownPlace.address && <p className="text-[11px] text-amber-300" data-testid="vip-own-place-missing">{t("own_addr_missing", lang)}</p>}
           </div>
         )}

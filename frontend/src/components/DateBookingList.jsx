@@ -151,7 +151,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1"><CalendarHeart size={14} className="text-rose-400"/><span className="font-serif-luxe text-lg">{b.venue}</span></div>
         <div className="text-xs text-slate-400 flex items-center gap-2"><Clock size={11}/> {b.vip ? <VipTimeRange b={b} lang={lang} /> : new Date(b.scheduled_at).toLocaleString()} · {b.city}</div>
-        {(b.address || b.lat || b.postal_code) && <div className="text-xs text-slate-400 mt-0.5">{[b.address, b.postal_code, b.country].filter(Boolean).join(" · ")} <MapsLink loc={b} testid={`date-maps-link-${b.id}`} /></div>}
+        {(b.address || b.lat || b.postal_code) && <div className="text-xs text-slate-400 mt-0.5">{[b.address, b.postal_code, b.country].filter(Boolean).join(" · ")} <MapsLink loc={b} testid={`date-maps-link-${b.id}`} /><UnverifiedNote show={b.unverified} testid={`booking-unverified-${b.id}`} /></div>}
         {b.meet?.address && <div className="text-xs text-emerald-300 mt-0.5" data-testid={`meet-location-${b.id}`}>📍 {t("meet_location", lang)}: {[b.meet.address, b.meet.postal_code, b.meet.country].filter(Boolean).join(" · ")} <MapsLink loc={{ ...b.meet, venue: b.venue }} testid={`meet-maps-link-${b.id}`} /><UnverifiedNote show={b.meet?.unverified} testid={`meet-unverified-${b.id}`} /></div>}
         <div className="mt-1 flex items-center gap-2 flex-wrap">
           <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLOR[b.status]}`}>{t(STATUS_MAP[b.status], lang)}</span>

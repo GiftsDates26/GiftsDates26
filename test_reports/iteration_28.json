@@ -1,0 +1,42 @@
+{
+  "summary": "Tested the map address check and the 'I confirm this address is correct' option on every address endpoint and in the main UI forms. Backend: 14 tests, 9 passed. Every endpoint returns ADDRESS_NOT_FOUND for an unknown address when the flag is missing, ADDRESS_FIELDS_REQUIRED when a field is empty, and accepts the address with lat/lng null when address_confirmed=true. /geo/verify: the Montreal fuzzy address is found by Photon, the fake street and a real street in the wrong city both return not found, and missing fields return ADDRESS_FIELDS_REQUIRED. The 5 failures share one gap: /dates/book, /vip/book (your/other) and /vip/schedule/{vip_id}/book (your/other) accept the confirmed address but never save unverified=true. Frontend: the Dates page location form, the Dates page pickup form and the VIP editor 'At my place' all work. The amber confirm box shows the full coin-loss warning, the submit button stays disabled until the box is ticked, editing a field clears verified/confirmed/error, and submitting saves unverified=true. The Montreal address shows the green verified badge and the matched address. The cards show the 'Address not found on the map — confirmed by sender' tag (date-loc-unverified-*, date-pickup-unverified-*).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/dates/book, POST /api/vip/book (place your/other), POST /api/vip/schedule/{vip_id}/book (place your/other)", "issue": "With address_confirmed=true the booking is created with lat/lng null, but no unverified flag is saved (date_bookings doc has no 'unverified'; vip_sched.location has no 'unverified'). The UI therefore cannot show the 'confirmed by sender' warning for these bookings, and there is no record for disputes. Fix: save geo['unverified'] (return value of _apply_geo) in the doc / location.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/vip/book & /api/vip/schedule/{vip_id}/book place=own", "issue": "_booking_location copies only LOC_KEYS, so the VIP's own place unverified flag is not carried into the booking. Add 'unverified' to the copied keys."},
+      {"endpoint": "POST /api/vip/schedule/bookings/{bid}/pickup/address", "issue": "pickup doc is built with **req.model_dump(exclude={'time'}), so 'address_confirmed' is saved in pickup. Exclude it, as is already done for own-place."},
+      {"endpoint": "POST /api/dates/book", "issue": "Geocoding (external HTTP call) runs before the cheap ACTIVITIES_REQUIRED / slot checks. Move _apply_geo after those checks so the geocoders get fewer calls."},
+      {"endpoint": "_photon_lookup", "issue": "Postcode match only compares the first 3 characters. '2155 av Prudhomme, 16' with H4A 3H3 matched a place with postcode H4A 1T7. This is acceptable as fuzzy matching, but the stored display_name differs from what the user typed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "VipEditor save", "issue": "PUT /vip/profile runs before PUT /vip/own-place. If the own-place check fails, the profile is already saved and the user only sees an error toast, so the save is partial.", "affected_selectors": ["[data-testid='vip-save']"]}
+    ],
+    "design_issues": [
+      {"screen": "VipEditor / VipPickupBlock reload", "issues": ["When a previously confirmed-unverified address is reloaded (confirmed=!!unverified), neither the amber confirm box nor any 'unverified' tag shows, so the user cannot see that the saved address was not found on the map."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_address_override.py", "/app/test_reports/pytest/iter28_address_override.xml"],
+  "action_items": [
+    "Save 'unverified': geo['unverified'] on date_bookings in /dates/book and /vip/book, and on vip_sched.location in /vip/schedule/{vip_id}/book",
+    "Add 'unverified' to the keys _booking_location copies for place=own",
+    "Exclude address_confirmed from the vs pickup doc",
+    "Optionally show the UnverifiedNote on VIP booking cards (DateBookingList / VipBookings) once the flag is saved"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 5971 lines; split the geo helpers and address endpoints into their own modules",
+    "_geocode_address: if a Nominatim request raises, the loop breaks and the code falls through to ADDRESS_NOT_FOUND rather than ADDRESS_CHECK_UNAVAILABLE. The confirm option still covers this (av_fail allows override).",
+    "VerifiedAddressForm: the venue field change does not reset verified. This is fine because venue is not geocoded."
+  ],
+  "updated_files": ["/app/backend/tests/test_address_override.py"],
+  "success_rate": {"backend": "64% (9/14; all 5 failures are the missing unverified flag on booking creation)", "frontend": "100% of the tested flows"},
+  "test_credentials": "testuser@giftsdates.com / Test@12345 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Temporary dates TEST_ui28_* and vip_until for testuser for UI testing, both removed afterwards. Testuser's vip_own_place was restored to 100 Queen St W. Pytest temporarily sets testuser coins to 20000, then restores coins/escrow and deletes TEST_ bookings.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest tests/test_address_override.py. The 5 TestBookings tests should pass once the unverified flag is saved. Geo cache (db.geo_cache) holds the Montreal and Queen St addresses. The fake address '12 Nowhere Fakeway, Toronto' always calls Photon, so keep loops small. The Dates page needs the gd_token key in localStorage and has tabs Requests / My Requests / Confirmed."
+}
