@@ -5211,7 +5211,7 @@ def _serialize(d, viewer_id, other_mini):
             "activity_option_1": d.get("activity_option_1"), "activity_option_2": d.get("activity_option_2"), "activity_option_3": d.get("activity_option_3"),
             "proposed_start": d.get("proposed_start"), "proposed_end": d.get("proposed_end"),
             "coins": d.get("coins"), "total_hold": d.get("total_hold"), "gift": d.get("gift"),
-            "location": loc, "transportation": trans, "report": bool(d.get("report")),
+            "location": loc, "transportation": trans, "report": bool(d.get("report")) and (d["report"].get("status") or "open") == "open",
             "report_info": _report_view(d.get("report"), viewer_id),
             "verification": (d.get("verification") or {}).get("status"), "windows": windows,
             "server_now": _iso(), "created_at": d.get("created_at")}
@@ -5630,13 +5630,13 @@ async def invite_cancel(did: str, user=Depends(get_current_user)):
 @api.post("/invites/{did}/report")
 async def invite_report(did: str, req: InviteReportReq, user=Depends(get_current_user)):
     d = await _get_party(did, user["id"])
+    if d.get("report") and (d["report"].get("status") or "open") == "open": raise HTTPException(409, "ALREADY_REPORTED")
     if d["status"] not in ("DATE_CONFIRMED", "DATE_COMPLETED_PENDING_VERIFICATION", "PHOTO_VERIFICATION_PENDING"): raise HTTPException(400, "Report not available")
     start = _pdt((d.get("location") or {}).get("scheduled_start"))
     if not start: raise HTTPException(400, "Report not available yet")
     if not (start <= _now() <= start + timedelta(hours=DATE_WINDOW_HOURS)):
         raise HTTPException(400, "REPORT_WINDOW_CLOSED")
     if len((req.details or "").strip()) < 10: raise HTTPException(400, "Please describe what happened (min 10 chars)")
-    if d.get("report") and (d["report"].get("status") or "open") == "open": raise HTTPException(409, "ALREADY_REPORTED")
     role = "inviter" if user["id"] == d["inviter_id"] else "recipient"
     rep = {"reporter_id": user["id"], "reporter_role": role, "reasons": req.reasons, "details": req.details.strip(), "evidence": req.evidence,
            "photos": await _report_photos(user, req.photos), "status": "open", "created_at": _iso(),

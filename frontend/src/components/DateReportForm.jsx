@@ -111,7 +111,7 @@ export const ReportStatusNote = ({ id, info }) => {
 export const ReportReplyBlock = ({ id, info, onSubmit }) => {
   const { lang } = useApp();
   const [open, setOpen] = useState(false);
-  if (!info || info.by_me) return null;
+  if (!info || info.by_me || (info.status || "open") !== "open") return null;
   const canReply = info.status === "open" && windowOpen(info);
   return (
     <div className="w-full rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 space-y-2" data-testid={`reported-block-${id}`}>
