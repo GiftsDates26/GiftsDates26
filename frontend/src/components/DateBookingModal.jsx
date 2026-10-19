@@ -12,7 +12,7 @@ import { t } from "../lib/i18n";
 import { toKey, fromKey, minHm, dayWins, openDayKeys, bestDayKeys } from "../lib/availability";
 import TimeChooser from "./TimeChooser";
 import AvailabilityOverview from "./AvailabilityOverview";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addrHintKey, addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 
 export default function DateBookingModal({ open, onOpenChange, target }) {
   const { user, meta, lang, refreshUser } = useApp();
@@ -42,7 +42,7 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
   };
 
   const submit = async () => {
-    if (!addressReady(loc) || !timeOk) { toast.error(t(addressReady(loc) ? "fill_all" : "av_required", lang)); return; }
+    if (!addressReady(loc) || !timeOk) { toast.error(t(addressReady(loc) ? "fill_all" : addrHintKey(loc), lang)); return; }
     const acts = activities.map(a => a.trim());
     if (acts.some(a => !a)) { toast.error(t("activities_required_err", lang)); return; }
     if (user.coins < coins) { toast.error(t("not_enough_coins", lang)); return; }

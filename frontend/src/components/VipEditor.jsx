@@ -13,7 +13,7 @@ import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addressComplete, addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import { VIP_CATEGORIES, VIP_PLACES, PRICE_KEYS, svcLabel, catTitle, placeLabel, priceLabel, extraLabel, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import { GENDERS } from "./ProfileDetailsForm";
 import CountrySelect from "./CountrySelect";
@@ -194,7 +194,7 @@ export default function VipEditor() {
         show_on_main: showOnMain,
       };
       if (places.includes("own")) {
-        if (!addressReady(ownPlace, false)) throw { response: { data: { detail: "ADDRESS_FIELDS_REQUIRED" } } };
+        if (!addressReady(ownPlace, false)) throw { response: { data: { detail: addressComplete(ownPlace, false) ? "CHECK_FIRST" : "ADDRESS_FIELDS_REQUIRED" } } };
         await api.put("/vip/own-place", addrPayload(ownPlace));
       }
       await api.put("/vip/profile", payload);

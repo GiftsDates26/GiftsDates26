@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Calendar, Clock, Loader2, Hourglass, MapPin } from "lucide-react";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addrHintKey, addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 import { placeLabel } from "../lib/vipCatalog";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -81,7 +81,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
     if (!isReschedule && !agree) { toast.error(t("commit_required", lang)); return; }
     const places = data.places || [];
     if (!isReschedule && places.length && !place) { toast.error(t("vip_select_place_first", lang)); return; }
-    if (!isReschedule && place && place !== "own" && !addressReady(loc, false)) { toast.error(t("av_required_nv", lang)); return; }
+    if (!isReschedule && place && place !== "own" && !addressReady(loc, false)) { toast.error(t(addrHintKey(loc, false), lang)); return; }
     if (!isReschedule && ((user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error(t("not_enough_coins", lang)); return; }
     setBusy(true);
     try {

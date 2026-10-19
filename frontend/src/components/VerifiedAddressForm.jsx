@@ -12,7 +12,8 @@ const KEYS = ["address", "city", "postal_code", "country"];
 export const addressComplete = (v, needVenue = true) => (!needVenue || !!(v?.venue || "").trim()) && KEYS.every(k => (v?.[k] || "").trim());
 export const addressReady = (v, needVenue = true) => addressComplete(v, needVenue) && (!!v?.verified || !!v?.confirmed);
 export const addrPayload = (v) => ({ address: v?.address || "", city: v?.city || "", postal_code: v?.postal_code || "", country: v?.country || "", lat: v?.lat ?? null, lng: v?.lng ?? null, address_confirmed: !!v?.confirmed && !v?.verified });
-export const addrErrKey = (d) => ({ ADDRESS_FIELDS_REQUIRED: "av_required", ADDRESS_NUMBER_REQUIRED: "av_number", ADDRESS_NOT_FOUND: "av_fail", ADDRESS_CHECK_UNAVAILABLE: "av_unavailable" })[d];
+export const addrHintKey = (v, needVenue = true) => addressComplete(v, needVenue) ? "av_check_first" : (needVenue ? "av_required" : "av_required_nv");
+export const addrErrKey = (d) => ({ CHECK_FIRST: "av_check_first", ADDRESS_FIELDS_REQUIRED: "av_required", ADDRESS_NUMBER_REQUIRED: "av_number", ADDRESS_NOT_FOUND: "av_fail", ADDRESS_CHECK_UNAVAILABLE: "av_unavailable" })[d];
 
 // Venue + street & number + city + postal code + country, all required, checked against the map.
 // If the map can't find it, the user may confirm the address is correct and accept the risk.

@@ -1,0 +1,25 @@
+{
+  "summary": "Retested the iteration_28 failures and the new fixes. Backend: 14/14 tests pass (TestBookings, TestVsPickup and the new TestIter29 in test_address_override.py, run serially). /dates/book, /vip/book (your/other) and /vip/schedule/{vip_id}/book (your/other) now save unverified=true for a confirmed unknown address. A verified address (100 Queen St W) saves unverified=false with real lat/lng, even when the client sends unverified=true or address_confirmed=true. place=own copies the VIP's own-place unverified flag (true or false) into date_bookings and vip_sched.location, and ignores a client-sent unverified value. The vs pickup doc no longer stores address_confirmed. Frontend: a reloaded unverified own place shows vip-own-place-unverified ('Address not found on the map — confirmed by sender'). An unchecked edited address blocks save on the client with no PUT. After 'Check address on map', the error and the confirm box show. Once confirmed, save sends PUT /vip/own-place before PUT /vip/profile, saves unverified=true, and the note shows again after reload. booking-unverified-{id} shows on the Dates page Booked dates row, and vs-unverified-{id} shows on the VIP Bookings 'mine' card.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VipEditor save with an edited but unchecked own-place address", "issues": ["The toast shows av_required ('Venue, street & number, city, postal code and country are all required...') even though all fields are filled. 'Venue' does not apply here. A clearer message would be 'Please check the address on the map first'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_address_override.py", "/app/test_reports/pytest/iter29_address_override.xml", "/app/tests/seed_iter29_ui.py"],
+  "action_items": ["Optional: show a 'check the address on the map first' message in VipEditor save when the address is complete but not verified or confirmed, instead of av_required"],
+  "critical_code_review_comments": [
+    "test_address_override.py has a module-scoped coin snapshot fixture, so it must run with -n 0. Under xdist, the workers race on testuser coins (Insufficient coins).",
+    "VipEditor: own-place is now saved before the profile. If PUT /vip/profile then fails, own-place stays saved. This is harmless (the reverse of the old issue).",
+    "server.py is about 5975 lines; split the geo and address helpers into a module"
+  ],
+  "updated_files": ["/app/backend/tests/test_address_override.py", "/app/tests/seed_iter29_ui.py"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% of tested flows"},
+  "test_credentials": "testuser@giftsdates.com / Test@12345",
+  "seed_data_creation": "Temporary TEST_ui29_db (date_bookings), TEST_ui29_vs (vip_sched), testuser vip_until/vip.places/vip_own_place for UI. All restored or removed by seed_iter29_ui.py clean. Pytest restored coins and admin vip_own_place and deleted TEST_ docs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: pytest tests/test_address_override.py -n 0. UI seed: python /app/tests/seed_iter29_ui.py seed|clean. testuser becomes VIP when seeded, so the VIP Bookings default tab is 'requests'; click vs-tab-mine. Fake address '13/12 Nowhere Fakeway' calls Photon and Nominatim (about 8s)."
+}

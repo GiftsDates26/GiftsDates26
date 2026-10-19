@@ -3,7 +3,7 @@ import { Car, Loader2, MapPin, Check, X, Send, Ban, Pencil, Hourglass } from "lu
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addrHintKey, addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import DirectionsButton from "./DirectionsButton";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -22,7 +22,7 @@ function AddressForm({ b, onDone, onClose, lang }) {
   const [note, setNote] = useState(pu.note || "");
   const [busy, setBusy] = useState(false);
   const send = async () => {
-    if (!addressReady(loc, false)) { toast.error(t("av_required_nv", lang)); return; }
+    if (!addressReady(loc, false)) { toast.error(t(addrHintKey(loc, false), lang)); return; }
     setBusy(true);
     try { await api.post(`/vip/schedule/bookings/${b.id}/pickup/address`, { ...addrPayload(loc), time, note }); toast.success(t("pu_addr_sent_toast", lang)); onClose?.(); onDone?.(); }
     catch (e) { toast.error(errMsg(e, lang)); }

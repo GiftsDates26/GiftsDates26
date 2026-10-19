@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { CalendarHeart, Camera, Clock, Check, X, Car, Info, Coins, Flag } from "lucide-react";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "./DateReportForm";
 import { MapsLink } from "./AddressPicker";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addrHintKey, addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import AddToCalendar from "./AddToCalendar";
 import ExtendDateButton from "./ExtendDateButton";
 import CancelPreviewDialog from "./CancelPreviewDialog";
@@ -115,7 +115,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   };
 
   const shareMeet = async (id) => {
-    if (!addressReady(meetLoc, false)) { toast.error(t("av_required_nv", lang)); return; }
+    if (!addressReady(meetLoc, false)) { toast.error(t(addrHintKey(meetLoc, false), lang)); return; }
     setBusyId(id);
     try { await api.post(`/dates/meet-location/${id}`, addrPayload(meetLoc)); await load(); toast.success(t("meet_location_shared_toast", lang)); setMeetFor(null); setMeetLoc({}); }
     catch (e) { const d = e.response?.data?.detail; toast.error(addrErrKey(d) ? t(addrErrKey(d), lang) : d || t("failed", lang)); }

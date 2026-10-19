@@ -209,3 +209,75 @@ class TestBookings:
         CREATED["vip_sched"].append(b["id"])
         assert b["location"]["lat"] is None
         assert b["location"].get("unverified") is True, "vip_sched location has no unverified flag"
+
+
+# ---- iteration 29: verified address -> unverified False, own place flag carried, vs pickup excludes address_confirmed ----
+QUEEN = {"address": "100 Queen St W", "city": "Toronto", "postal_code": "M5H 2N2", "country": "Canada"}
+
+
+@pytest.fixture
+def admin_own_place(ids):
+    me, ad = ids
+    old = db.users.find_one({"id": ad}, {"_id": 0, "vip_own_place": 1}).get("vip_own_place")
+    yield lambda loc: db.users.update_one({"id": ad}, {"$set": {"vip_own_place": loc}})
+    if old is None: db.users.update_one({"id": ad}, {"$unset": {"vip_own_place": ""}})
+    else: db.users.update_one({"id": ad}, {"$set": {"vip_own_place": old}})
+
+
+class TestIter29:
+    def test_dates_book_verified(self, h, ids):
+        me, ad = ids
+        when = (datetime.now(timezone.utc) + timedelta(days=14)).replace(hour=18, minute=0, second=0, microsecond=0)
+        r = post("/dates/book", {"target_id": ad, "venue": "TEST_Bar", **QUEEN, "scheduled_at": when.isoformat(), "coins": 500,
+                                 "activities": ["a", "b", "c"], "address_confirmed": True, "unverified": True}, h)
+        assert r.status_code == 200, r.text
+        b = db.date_bookings.find_one({"id": r.json()["booking_id"]}); CREATED["date_bookings"].append(b["id"])
+        assert b["unverified"] is False and abs(b["lat"] - 43.6536) < 0.01
+
+    def test_vip_book_verified(self, h, ids):
+        me, ad = ids
+        when = (datetime.now(timezone.utc) + timedelta(days=15)).strftime("%Y-%m-%dT19:00")
+        r = post("/vip/book", {"target_id": ad, "venue": "TEST_VipBar", **QUEEN, "scheduled_at": when, "coins": 1, "place": "your",
+                               "vip_length": 1, "unverified": True}, h)
+        assert r.status_code == 200, r.text
+        b = db.date_bookings.find_one({"id": r.json()["booking_id"]}); CREATED["date_bookings"].append(b["id"])
+        assert b["unverified"] is False and b["lat"] is not None
+
+    @pytest.mark.parametrize("unv", [True, False])
+    def test_vip_book_own(self, h, ids, admin_own_place, unv):
+        me, ad = ids
+        admin_own_place({**(FAKE if unv else QUEEN), "lat": None if unv else 43.65, "lng": None if unv else -79.38, "unverified": unv})
+        when = (datetime.now(timezone.utc) + timedelta(days=16 + int(unv))).strftime("%Y-%m-%dT19:00")
+        r = post("/vip/book", {"target_id": ad, "venue": "TEST_VipOwn", "city": "", "scheduled_at": when, "coins": 1, "place": "own",
+                               "vip_length": 1, "unverified": not unv}, h)
+        assert r.status_code == 200, r.text
+        b = db.date_bookings.find_one({"id": r.json()["booking_id"]}); CREATED["date_bookings"].append(b["id"])
+        assert b["unverified"] is unv and b["address"] == (FAKE if unv else QUEEN)["address"]
+
+    @pytest.mark.parametrize("place,start,unv", [("own", "16:00", True), ("own", "18:00", False), ("your", "20:00", False)])
+    def test_vs_book_flags(self, h, ids, admin_own_place, place, start, unv):
+        me, ad = ids
+        day = (datetime.now(timezone.utc) + timedelta(days=13)).strftime("%Y-%m-%d")
+        aid = "TEST_av29"; CREATED["vip_avail"].append(aid)
+        if not db.vip_avail.find_one({"id": aid}):
+            db.vip_avail.insert_one({"id": aid, "vip_id": ad, "date": day, "start": "09:00", "end": "23:00", "slot_len": 60, "tz": "UTC"})
+        admin_own_place({**(FAKE if unv else QUEEN), "lat": None if unv else 43.65, "lng": None if unv else -79.38, "unverified": unv})
+        end = f"{int(start[:2]) + 1:02d}:00"
+        body = {"date": day, "start": start, "end": end, "length": 1, "venue": "TEST_vs29", "place": place, "tz": "UTC", "unverified": True}
+        if place != "own": body.update(QUEEN)
+        r = post(f"/vip/schedule/{ad}/book", body, h)
+        assert r.status_code == 200, r.text
+        b = db.vip_sched.find_one({"requester_id": me, "date": day, "start": start, "vip_id": ad}, sort=[("created_at", -1)])
+        CREATED["vip_sched"].append(b["id"])
+        assert b["location"]["unverified"] is unv, b["location"]
+
+    def test_vs_pickup_no_address_confirmed(self, h, ids):
+        me, ad = ids
+        bid = "TEST_vp29_" + uuid.uuid4().hex[:8]; CREATED["vip_sched"].append(bid)
+        day = (datetime.now(timezone.utc) + timedelta(days=6)).strftime("%Y-%m-%d")
+        db.vip_sched.insert_one({"id": bid, "vip_id": me, "requester_id": ad, "date": day, "start": "18:00", "end": "19:00", "status": "pending",
+                                 "venue": "TEST_x", "taxi": {"status": "pending", "amount": 10}, "pickup": {"status": "offered"}, "coins": 10, "tz": "UTC"})
+        r = post(f"/vip/schedule/bookings/{bid}/pickup/address", {**QUEEN, "address_confirmed": True}, h)
+        assert r.status_code == 200, r.text
+        p = db.vip_sched.find_one({"id": bid})["pickup"]
+        assert "address_confirmed" not in p and p["unverified"] is False and p["lat"] is not None

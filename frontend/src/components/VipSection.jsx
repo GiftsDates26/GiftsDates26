@@ -7,7 +7,7 @@ import { api, fileUrl } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import VerifiedAddressForm, { addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
+import VerifiedAddressForm, { addrHintKey, addressReady, addrPayload, addrErrKey } from "./VerifiedAddressForm";
 import { PRICE_KEYS, svcLabel, placeLabel, priceLabel, extraLabel, extraPrice, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import ExtraHoursStepper from "./ExtraHoursStepper";
 import { t } from "../lib/i18n";
@@ -90,7 +90,7 @@ export default function VipSection({ userId, name, preview }) {
     const total = coins + extraHours * extra;
     if (!agree) { toast.error(t("commit_required", lang)); return; }
     if (hasPlaces && !place) { toast.error(t("vip_select_place_first", lang)); return; }
-    if (place && place !== "own" && !addressReady(loc, false)) { toast.error(t("av_required_nv", lang)); return; }
+    if (place && place !== "own" && !addressReady(loc, false)) { toast.error(t(addrHintKey(loc, false), lang)); return; }
     if ((( user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error("Недостаточно монет", { action: { label: "Пополнить", onClick: () => nav("/wallet") } }); return; }
     setBusy(true);
     try {
