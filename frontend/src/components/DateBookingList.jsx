@@ -56,7 +56,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   const all = [...incoming.map(b => ({ b, inc: true })), ...outgoing.map(b => ({ b, inc: false }))]
     .sort((x, y) => String(x.b.scheduled_at).localeCompare(String(y.b.scheduled_at)));
   const statusKey = all.map(x => `${x.b.status}:${x.inc}`).join(",");
-  useEffect(() => { onItems?.(all.map(x => ({ status: x.b.status, inc: x.inc }))); }, [statusKey]); // eslint-disable-line
+  useEffect(() => { onItems?.(all.map(x => ({ id: x.b.id, status: x.b.status, inc: x.inc, start: x.b.scheduled_at, name: x.inc ? x.b.from_name : x.b.to_name, place: x.b.venue }))); }, [statusKey]); // eslint-disable-line
   const shown = all.filter(x => tab ? tabOf(x.b.status, x.inc) === tab : matchesFilter(x.b.status, filter));
 
   const [cancelFor, setCancelFor] = useState(null);

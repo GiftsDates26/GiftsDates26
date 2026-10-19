@@ -17,6 +17,8 @@ import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "../components/DateReportForm";
 import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
+import DatesToday from "../components/DatesToday";
+import DatesEarnings from "../components/DatesEarnings";
 import CancelPreviewDialog from "../components/CancelPreviewDialog";
 
 const FALLBACK = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&q=80";
@@ -362,14 +364,23 @@ export default function InviteDates() {
   const shown = inv.filter(x => tabOf(x.d.status, x.inc) === tab)
     .sort((a, b) => String(b.d.created_at || "").localeCompare(String(a.d.created_at || "")));
   const bookedShown = (booked || []).filter(x => tabOf(x.status, x.inc) === tab).length;
+  const todayItems = [
+    ...inv.map(({ d, inc }) => ({ id: d.id, start: d.location?.scheduled_start || d.proposed_start, name: d.other?.name, place: d.location?.venue, tab: tabOf(d.status, inc), card: `date-card-${d.id}` })),
+    ...(booked || []).map(b => ({ id: b.id, start: b.start, name: b.name, place: b.place, tab: tabOf(b.status, b.inc), card: `date-row-${b.id}` })),
+  ];
+  const openToday = (x) => { setTab(x.tab); setTimeout(() => document.querySelector(`[data-testid="${x.card}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 150); };
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10" data-testid="dates-page">
-      <header className="mb-6">
-        <h1 className="font-serif-luxe text-4xl sm:text-5xl flex items-center gap-3"><CalendarHeart className="text-rose-400" size={30} /> {t("dates", lang)}</h1>
-        <p className="text-sm text-slate-400 mt-2">{t("dates_page_sub", lang)}</p>
+      <header className="mb-6 grid gap-4 md:grid-cols-[1fr_300px] items-end">
+        <div>
+          <h1 className="font-serif-luxe text-4xl sm:text-5xl flex items-center gap-3"><CalendarHeart className="text-rose-400" size={30} /> {t("dates", lang)}</h1>
+          <p className="text-sm text-slate-400 mt-2">{t("dates_page_sub", lang)}</p>
+        </div>
+        <DatesEarnings />
       </header>
 
       {nothing ? <EmptyDates /> : <>
+        <div className="mb-4"><DatesToday items={todayItems} onOpen={openToday} /></div>
         <DatesStatTiles value={tab} onChange={setTab} counts={counts} />
         <DatesTabBar value={tab} onChange={setTab} counts={counts} />
         <div className="mt-6 space-y-6" data-testid={`dates-panel-${tab}`} key={tab}>
