@@ -320,7 +320,6 @@ function DateCard({ d, reload }) {
           <Button data-testid={`date-verify-${d.id}`} onClick={() => setShowVerify(v => !v)} variant="outline" className="h-9 bg-emerald-500/10 border-emerald-500/40 text-emerald-300"><Camera size={14} className="me-1" />{tr("id_send_photo_conf")}</Button>}
         {chatEnabled && <Button data-testid={`date-chat-toggle-${d.id}`} onClick={() => setShowChat(v => !v)} variant="outline" className="h-9 bg-sky-500/10 border-sky-500/40 text-sky-300"><MessageCircle size={14} className="me-1" />{tr("id_chat")}</Button>}
         {showCal && (() => { const ev = _calEvent(); return <AddToCalendar id={d.id} title={ev.title} place={ev.place} start={ev.s} end={ev.e} />; })()}
-        {d.status === "DATE_CONFIRMED" && (d.location?.address || d.location?.lat != null) && <DirectionsButton loc={d.location} testid={`invite-directions-${d.id}`} />}
         {isInv && d.transportation?.type === "pickup" && d.transportation?.pickup_address && ["PICKUP_ADDRESS_SELECTED", "DATE_CONFIRMED"].includes(d.status) &&
           <DirectionsButton loc={{ lat: d.transportation.pickup_lat, lng: d.transportation.pickup_lng, address: d.transportation.pickup_address }} label="dir_pickup" testid={`date-pickup-directions-${d.id}`} />}
       </div>
