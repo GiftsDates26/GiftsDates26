@@ -7,7 +7,7 @@ import { Input } from "../components/ui/input";
 import { api, fileUrl } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
-import AddressPicker, { MapsLink } from "../components/AddressPicker";
+import { MapsLink } from "../components/AddressPicker";
 import DirectionsButton from "../components/DirectionsButton";
 import DateBookingList from "../components/DateBookingList";
 import CancelledDates from "../components/CancelledDates";
@@ -17,6 +17,7 @@ import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "../components/DateReportForm";
 import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
+import VerifiedAddressForm, { addressReady, addrErrKey } from "../components/VerifiedAddressForm";
 import DatesToday from "../components/DatesToday";
 import DatesEarnings from "../components/DatesEarnings";
 import CancelPreviewDialog from "../components/CancelPreviewDialog";
@@ -110,7 +111,6 @@ function DateCard({ d, reload }) {
   const [busy, setBusy] = useState(false);
   const [choose, setChoose] = useState("");
   const [loc, setLoc] = useState({});
-  const [venue, setVenue] = useState("");
   const [taxi, setTaxi] = useState(""); const [pickup, setPickup] = useState({});
   const [showReport, setShowReport] = useState(false);
   const [showVerify, setShowVerify] = useState(false); const [vfile, setVfile] = useState(null); const [vok, setVok] = useState(false);
@@ -141,7 +141,7 @@ function DateCard({ d, reload }) {
     return s.replace("{o}", o);
   };
 
-  const act = async (fn) => { setBusy(true); try { await fn(); await reload(); } catch (e) { toast.error(e.response?.data?.detail || tr("failed")); } finally { setBusy(false); } };
+  const act = async (fn) => { setBusy(true); try { await fn(); await reload(); } catch (e) { const dt = e.response?.data?.detail; toast.error(addrErrKey(dt) ? tr(addrErrKey(dt)) : dt || tr("failed")); } finally { setBusy(false); } };
   const post = (path, body) => api.post(`/invites/${d.id}${path}`, body);
   const cancelLocked = !!d.location?.scheduled_start && Date.now() >= new Date(d.location.scheduled_start).getTime() - 30 * 60000;
 
@@ -240,9 +240,8 @@ function DateCard({ d, reload }) {
                 <span>{tr("id_location_fixed_time").replace("{when}", new Date(d.proposed_start).toLocaleString())}</span>
               </div>
             )}
-            <Input data-testid={`date-venue-${d.id}`} value={venue} onChange={e => setVenue(e.target.value)} placeholder={tr("id_venue_ph")} className="bg-white/5 border-white/10 h-9" />
-            <AddressPicker value={loc} onChange={setLoc} />
-            <Button data-testid={`date-location-submit-${d.id}`} disabled={busy || !venue} onClick={() => act(() => post("/location", { venue, address: loc.address, city: loc.city, country: loc.country, postal_code: loc.postal_code, lat: loc.lat, lng: loc.lng }))} className="rose-btn text-white border-0 h-9">{tr("id_propose_location")}</Button>
+            <VerifiedAddressForm value={loc} onChange={setLoc} testid={`date-location-addr-${d.id}`} />
+            <Button data-testid={`date-location-submit-${d.id}`} disabled={busy || !addressReady(loc)} onClick={() => act(() => post("/location", { venue: loc.venue, address: loc.address, city: loc.city, country: loc.country, postal_code: loc.postal_code, lat: loc.lat, lng: loc.lng }))} className="rose-btn text-white border-0 h-9">{tr("id_propose_location")}</Button>
           </div>
         )}
         {d.status === "LOCATION_PROPOSED" && !isInv && (
@@ -279,10 +278,11 @@ function DateCard({ d, reload }) {
         {d.status === "PICKUP_ADDRESS_PENDING" && !isInv && (
           <div className="w-full space-y-2 rounded-lg border border-white/10 p-2" data-testid={`date-pickup-addr-${d.id}`}>
             <div className="text-xs text-amber-200">{tr("id_pickup_share_hint")}</div>
-            <AddressPicker value={pickup} onChange={setPickup} />
+            <VerifiedAddressForm value={pickup} onChange={setPickup} testid={`date-pickup-addr-form-${d.id}`} />
             <div className="flex flex-wrap gap-2">
-              <Button data-testid={`date-pickup-submit-${d.id}`} disabled={busy || !((pickup.address || "").trim())} onClick={() => act(() => post("/pickup/address", {
-                pickup_address: [pickup.address, pickup.city, pickup.postal_code, pickup.country].filter(Boolean).join(", ") || pickup.address,
+              <Button data-testid={`date-pickup-submit-${d.id}`} disabled={busy || !addressReady(pickup)} onClick={() => act(() => post("/pickup/address", {
+                pickup_address: [pickup.venue, pickup.address, pickup.city, pickup.postal_code, pickup.country].filter(Boolean).join(", "),
+                venue: pickup.venue, street: pickup.address,
                 lat: pickup.lat, lng: pickup.lng, city: pickup.city, country: pickup.country, postal_code: pickup.postal_code,
               }))} className="rose-btn text-white border-0 h-9"><Check size={14} className="me-1" />{tr("id_accept_share_pickup")}</Button>
               <Button data-testid={`date-pickup-reject-${d.id}`} disabled={busy} onClick={rejectPickup} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300"><X size={14} className="me-1" />{tr("id_reject_date")}</Button>

@@ -5157,11 +5157,62 @@ class InviteTaxiReq(BaseModel):
     amount: int
 class PickupAddrReq(BaseModel):
     pickup_address: str
+    venue: Optional[str] = ""
+    street: Optional[str] = ""
     lat: Optional[float] = None
     lng: Optional[float] = None
     city: Optional[str] = None
     country: Optional[str] = None
     postal_code: Optional[str] = None
+class GeoVerifyReq(BaseModel):
+    address: Optional[str] = ""
+    city: Optional[str] = ""
+    postal_code: Optional[str] = ""
+    country: Optional[str] = ""
+
+_NOMINATIM = "https://nominatim.openstreetmap.org/search"
+_norm_pc = lambda s: re.sub(r"[^0-9a-z]", "", (s or "").lower())
+
+async def _geocode_address(street: str, city: str, postal: str, country: str, venue: str = "") -> dict:
+    """Checks that the address exists on the map (OpenStreetMap). Raises 400 with a code when it doesn't."""
+    street, city, postal, country = [(x or "").strip() for x in (street, city, postal, country)]
+    if not all([street, city, postal, country]) or (venue is not None and not (venue or "").strip()):
+        raise HTTPException(400, "ADDRESS_FIELDS_REQUIRED")
+    if not re.search(r"\d", street):
+        raise HTTPException(400, "ADDRESS_NUMBER_REQUIRED")
+    key = "|".join(x.lower() for x in (street, city, postal, country))
+    hit = await db.geo_cache.find_one({"key": key}, {"_id": 0})
+    if hit:
+        if not hit.get("ok"): raise HTTPException(400, "ADDRESS_NOT_FOUND")
+        return hit["result"]
+    queries = [{"street": street, "city": city, "postalcode": postal, "country": country},
+               {"street": street, "city": city, "country": country},
+               {"q": f"{street}, {city}, {postal}, {country}"}]
+    found = None
+    try:
+        async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "GiftsDates/1.0 (support@giftsdates.com)"}) as client:
+            for q in queries:
+                r = await client.get(_NOMINATIM, params={**q, "format": "json", "addressdetails": 1, "limit": 5})
+                for it in (r.json() or []):
+                    a = it.get("address") or {}
+                    if not a.get("road") and not a.get("pedestrian") and not a.get("house_number"): continue
+                    pc = _norm_pc(a.get("postcode"))
+                    if pc and _norm_pc(postal)[:3] != pc[:3]: continue
+                    found = it; break
+                if found: break
+    except Exception as e:
+        logging.warning(f"geocode failed: {e}")
+        raise HTTPException(503, "ADDRESS_CHECK_UNAVAILABLE")
+    if not found:
+        await db.geo_cache.insert_one({"key": key, "ok": False, "created_at": _iso()})
+        raise HTTPException(400, "ADDRESS_NOT_FOUND")
+    res = {"lat": float(found["lat"]), "lng": float(found["lon"]), "display_name": found.get("display_name", "")}
+    await db.geo_cache.insert_one({"key": key, "ok": True, "result": res, "created_at": _iso()})
+    return res
+
+@api.post("/geo/verify")
+async def geo_verify(req: GeoVerifyReq, user=Depends(get_current_user)):
+    return {"ok": True, **(await _geocode_address(req.address, req.city, req.postal_code, req.country, venue=None))}
 class DateMsgReq(BaseModel):
     text: str
 
@@ -5260,8 +5311,9 @@ async def invite_location(did: str, req: InviteLocationReq, user=Depends(get_cur
     end = _pdt(d.get("proposed_end")) or (start + timedelta(hours=DATE_WINDOW_HOURS))
     if await _conflict(user["id"], start, end, did) or await _conflict(d["recipient_id"], start, end, did):
         raise HTTPException(400, "TIME_CONFLICT")
-    loc = {"venue": req.venue, "address": req.address or "", "city": req.city or "", "meeting_point": req.meeting_point or "",
-           "country": req.country or "", "postal_code": req.postal_code or "", "lat": req.lat, "lng": req.lng,
+    geo = await _geocode_address(req.address, req.city, req.postal_code, req.country, venue=req.venue)
+    loc = {"venue": req.venue.strip(), "address": req.address.strip(), "city": req.city.strip(), "meeting_point": req.meeting_point or "",
+           "country": req.country.strip(), "postal_code": req.postal_code.strip(), "lat": geo["lat"], "lng": geo["lng"],
            "scheduled_start": _iso(start), "scheduled_end": _iso(end)}
     await db.dates.update_one({"id": did}, {"$set": {"location": loc}})
     await _log_status(did, "LOCATION_PROPOSED", user["id"])
@@ -5338,13 +5390,14 @@ async def invite_pickup_offer(did: str, user=Depends(get_current_user)):
 async def invite_pickup_address(did: str, req: PickupAddrReq, user=Depends(get_current_user)):
     d = await _get_party(did, user["id"], "recipient")
     if d["status"] != "PICKUP_ADDRESS_PENDING": raise HTTPException(400, "Cannot submit pickup now")
-    if not req.pickup_address.strip(): raise HTTPException(400, "Address required")
-    _pu = {"transportation.pickup_address": req.pickup_address.strip(), "transportation.status": "address_selected"}
-    if req.lat is not None and req.lng is not None:
-        _pu["transportation.pickup_lat"] = req.lat; _pu["transportation.pickup_lng"] = req.lng
-    if req.city: _pu["transportation.pickup_city"] = req.city.strip()
-    if req.country: _pu["transportation.pickup_country"] = req.country.strip()
-    if req.postal_code: _pu["transportation.pickup_postal_code"] = req.postal_code.strip()
+    street = (req.street or "").strip()
+    geo = await _geocode_address(street, req.city, req.postal_code, req.country, venue=req.venue)
+    full = ", ".join(x.strip() for x in [req.venue, street, req.city, req.postal_code, req.country] if x and x.strip())
+    _pu = {"transportation.pickup_address": full, "transportation.status": "address_selected",
+           "transportation.pickup_venue": req.venue.strip(), "transportation.pickup_street": street,
+           "transportation.pickup_lat": geo["lat"], "transportation.pickup_lng": geo["lng"],
+           "transportation.pickup_city": req.city.strip(), "transportation.pickup_country": req.country.strip(),
+           "transportation.pickup_postal_code": req.postal_code.strip()}
     await db.dates.update_one({"id": did}, {"$set": _pu})
     await _log_status(did, "PICKUP_ADDRESS_SELECTED", user["id"])
     await notify(d["inviter_id"], "date_taxi", "Pickup address shared", f"{user['name']} shared a pickup address. Confirm pickup or pay taxi instead.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date")
