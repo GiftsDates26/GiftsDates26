@@ -68,3 +68,42 @@ export default function NoShowReport({ b, onDone }) {
     </>
   );
 }
+
+const fmtDl = (iso, lang) => iso ? new Date(iso).toLocaleString(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+
+// Open no-show case: the VIP may reply within 24h; the client sees the status. Coins stay on hold until support decides.
+export function NoShowCase({ b, who, onDone }) {
+  const { lang } = useApp();
+  const r = b.no_show_report || {};
+  const [note, setNote] = useState("");
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  if (r.status !== "open") return null;
+  const open = !r.reply_deadline || Date.now() < new Date(r.reply_deadline).getTime();
+  const send = async () => {
+    if (note.trim().length < 10) { toast.error(t("id_report_min", lang)); return; }
+    const fd = new FormData(); fd.append("note", note.trim()); if (file) fd.append("photo", file);
+    setBusy(true);
+    try { await api.post(`/vip/schedule/bookings/${b.id}/no-show/reply`, fd, { headers: { "Content-Type": "multipart/form-data" } }); toast.success(t("rr_sent", lang)); onDone?.(); }
+    catch (e) { const d = e.response?.data?.detail || ""; toast.error(ERR[d] ? t(ERR[d], lang) : d === "REPLY_WINDOW_CLOSED" ? t("rr_closed", lang) : d || "Error"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2 text-[11px]" data-testid={`vs-no-show-case-${b.id}`}>
+      <div className="font-semibold text-amber-200">{t("rs_title", lang)}</div>
+      {who === "incoming" ? <>
+        <div className="text-slate-300">{t("ns_vip_reported", lang)}{r.note ? ` — "${r.note}"` : ""}</div>
+        {r.reply ? <div className="text-emerald-300" data-testid={`vs-no-show-replied-${b.id}`}>{t("rr_sent", lang)}</div>
+          : open ? <>
+            <div className="text-amber-200" data-testid={`vs-no-show-deadline-${b.id}`}>{t("rr_deadline", lang).replace("{t}", fmtDl(r.reply_deadline, lang))} {t("rs_outcome_inviter", lang)} {t("rs_admin", lang)}</div>
+            <Textarea data-testid={`vs-no-show-reply-note-${b.id}`} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} rows={3} placeholder={t("rr_details_ph", lang)} className="bg-white/5 border-white/10" />
+            <label className="flex items-center gap-2 text-slate-400 cursor-pointer"><Camera size={14} />{file ? file.name : t("ns_photo_add", lang)}
+              <input type="file" accept="image/*" className="hidden" data-testid={`vs-no-show-reply-photo-${b.id}`} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+            <Button size="sm" disabled={busy} onClick={send} className="rose-btn text-white border-0 h-8" data-testid={`vs-no-show-reply-submit-${b.id}`}>{busy ? <Loader2 size={14} className="animate-spin" /> : t("rr_submit", lang)}</Button>
+          </> : <div className="text-slate-400">{t("rr_closed", lang)} {t("rs_admin", lang)}</div>}
+      </> : <div className="text-slate-300" data-testid={`vs-no-show-status-${b.id}`}>
+        {r.reply ? t("rs_replied", lang) : open ? t("rs_waiting", lang).replace("{t}", fmtDl(r.reply_deadline, lang)) : t("rs_no_reply", lang)} {t("rs_outcome_inviter", lang)} {t("rs_admin", lang)}
+      </div>}
+    </div>
+  );
+}

@@ -17,7 +17,7 @@ import VipPickupBlock from "../components/VipPickupBlock";
 import ArrivedButton from "../components/ArrivedButton";
 import TodayStrip from "../components/TodayStrip";
 import EarningsChart from "../components/EarningsChart";
-import NoShowReport from "../components/NoShowReport";
+import NoShowReport, { NoShowCase } from "../components/NoShowReport";
 import RunningLateButton from "../components/RunningLateButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
@@ -28,8 +28,9 @@ import CancelledDates from "../components/CancelledDates";
 
 const fmtDay = (d) => { try { const [y, m, dd] = d.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }); } catch { return d; } };
 
-const ACCENT = { pending: "border-s-amber-400/70", confirmed: "border-s-sky-400/70", completed: "border-s-emerald-400/70", declined: "border-s-rose-400/50", cancelled: "border-s-slate-500/50" };
+const ACCENT = { reported: "border-s-amber-500/80", pending: "border-s-amber-400/70", confirmed: "border-s-sky-400/70", completed: "border-s-emerald-400/70", declined: "border-s-rose-400/50", cancelled: "border-s-slate-500/50" };
 const STATUS_BADGE = {
+  reported: "bg-amber-500/15 border-amber-500/50 text-amber-200",
   pending: "bg-amber-500/15 border-amber-500/40 text-amber-300",
   confirmed: "bg-sky-500/15 border-sky-500/40 text-sky-300",
   declined: "bg-rose-500/15 border-rose-500/40 text-rose-300",
@@ -150,6 +151,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         )}
       </div>
     </div>
+    {b.status === "reported" && <NoShowCase b={b} who={who} onDone={onReload} />}
     <VipPickupBlock b={b} who={who} onDone={onReload} onCancel={onCancel} />
     <VipTaxiBlock b={b} who={who} onDone={onReload} />
     </div>
@@ -205,7 +207,7 @@ export default function VipBookings() {
   const CLOSED = ["declined", "cancelled"];
   const past = (sched?.past || []).filter((b) => !CLOSED.includes(b.status));
   const closedIn = (sched?.past || []).filter((b) => CLOSED.includes(b.status));
-  const mineActive = mine.filter((m) => ["pending", "confirmed", "completed"].includes(m.status));
+  const mineActive = mine.filter((m) => ["pending", "confirmed", "reported", "completed"].includes(m.status));
   const closedOut = mine.filter((m) => CLOSED.includes(m.status));
   const closedCount = closedIn.length + closedOut.length;
   const closedList = (

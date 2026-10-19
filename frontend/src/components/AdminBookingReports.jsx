@@ -17,12 +17,27 @@ export const ReplyView = ({ reply, testid }) => (
   </div>
 );
 
+// 24h reply window state + the default outcome when the reported person doesn't answer.
+export const ReportWindow = ({ r, testid }) => {
+  if (!r || (r.status || "open") !== "open") return null;
+  const dl = r.reply_deadline ? new Date(r.reply_deadline) : null;
+  const ended = dl && Date.now() > dl.getTime();
+  const def = r.reporter_role === "recipient" ? "release all coins to the invited person" : "refund the inviter";
+  return (
+    <div className={`mt-2 text-xs rounded-md border p-2 ${ended && !r.reply ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-white/10 bg-white/5 text-slate-300"}`} data-testid={testid}>
+      {r.reply ? "Reported person replied — compare both sides and decide." : ended ? `24h reply window ended with NO reply → default: reporter wins (${def}). Your confirmation is required.` : dl ? `Reply window open until ${dl.toLocaleString()} · default if no reply / no strong evidence: ${def}.` : "Legacy report (no reply window)."}
+      {" "}Reported by the <b>{r.reporter_role === "recipient" ? "invited person" : "inviter"}</b>.
+    </div>
+  );
+};
+
 export default function AdminBookingReports() {
   const [rows, setRows] = useState([]);
   const load = () => api.get("/admin/booking-reports").then(r => setRows(r.data.bookings || [])).catch(() => {});
   useEffect(() => { load(); }, []);
   const resolve = async (b, action) => {
-    const msg = action === "refund_booker" ? `Refund all coins (🪙${b.coins}${b.taxi?.status === "sent" ? ` + taxi 🪙${b.taxi.coins}` : ""}) to ${b.inviter?.name}?` : "Dismiss this report? The date continues as normal.";
+    const msg = action === "refund_booker" ? `Refund all coins (🪙${b.coins}${b.taxi?.status === "sent" ? ` + taxi 🪙${b.taxi.coins}` : ""}) to ${b.inviter?.name}?`
+      : action === "release_recipient" ? `Release all coins (🪙${b.coins}) to ${b.recipient?.name}?` : "Dismiss this report? The date continues as normal.";
     if (!window.confirm(msg)) return;
     try { await api.post(`/admin/booking-reports/${b.id}/resolve?action=${action}`); toast.success("Done"); load(); }
     catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
@@ -34,6 +49,8 @@ export default function AdminBookingReports() {
       {rows.length === 0 ? <div className="text-sm text-slate-500 py-4 text-center">No reports</div> : rows.map(b => {
         const r = b.report || {}, open = (r.status || "open") === "open";
         const reporter = r.reporter_id === b.from_id ? b.inviter : b.recipient;
+        const role = r.reporter_role || (r.reporter_id === b.from_id ? "inviter" : "recipient");
+        const def = role === "recipient" ? "release_recipient" : "refund_booker";
         return (
           <div key={b.id} className="py-3 border-t border-white/5 flex flex-wrap items-start gap-3" data-testid={`admin-booking-report-${b.id}`}>
             <div className="flex-1 min-w-[260px]">
@@ -42,9 +59,11 @@ export default function AdminBookingReports() {
               <div className="text-xs text-rose-300 mt-1">{(r.reasons || []).join(", ")} — "{r.details}"{r.evidence ? ` · evidence: ${r.evidence}` : ""}</div>
               <ReportPhotos photos={r.photos} testid={`admin-booking-report-photos-${b.id}`} />
               <ReplyView reply={r.reply} testid={`admin-booking-reply-${b.id}`} />
+              <ReportWindow r={{ ...r, reporter_role: role }} testid={`admin-booking-window-${b.id}`} />
             </div>
             {open && <>
-              <Button size="sm" variant="outline" onClick={() => resolve(b, "refund_booker")} className="bg-white/5 border-white/15" data-testid={`admin-booking-refund-${b.id}`}>Refund booker</Button>
+              <Button size="sm" variant="outline" onClick={() => resolve(b, "refund_booker")} className={def === "refund_booker" ? "bg-amber-500/15 border-amber-500/50 text-amber-100" : "bg-white/5 border-white/15"} data-testid={`admin-booking-refund-${b.id}`}>Refund booker{def === "refund_booker" ? " (default)" : ""}</Button>
+              <Button size="sm" variant="outline" onClick={() => resolve(b, "release_recipient")} className={def === "release_recipient" ? "bg-amber-500/15 border-amber-500/50 text-amber-100" : "bg-white/5 border-white/15"} data-testid={`admin-booking-release-${b.id}`}>Release all to invited{def === "release_recipient" ? " (default)" : ""}</Button>
               <Button size="sm" variant="outline" onClick={() => resolve(b, "dismiss")} className="bg-white/5 border-white/15" data-testid={`admin-booking-dismiss-${b.id}`}>Dismiss</Button>
             </>}
           </div>

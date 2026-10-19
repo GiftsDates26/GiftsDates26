@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarHeart, ArrowRight, Inbox, Send, CalendarClock, Ban, History } from "lucide-react";
+import { CalendarHeart, ArrowRight, Inbox, Send, CalendarClock, Ban, History, ShieldAlert } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
 import { DATE_FILTERS, DATE_TABS } from "../lib/dateFilters";
@@ -45,6 +45,7 @@ const TAB_META = {
   requests: { icon: Inbox, label: "vb_requests", tone: "text-rose-300", ring: "border-rose-500/50 bg-rose-500/10" },
   mine: { icon: Send, label: "vb_mine", tone: "text-sky-300", ring: "border-sky-500/50 bg-sky-500/10" },
   confirmed: { icon: CalendarClock, label: "vb_confirmed", tone: "text-emerald-300", ring: "border-emerald-500/50 bg-emerald-500/10" },
+  review: { icon: ShieldAlert, label: "dp_tab_review", tone: "text-amber-300", ring: "border-amber-500/50 bg-amber-500/10" },
   cancelled: { icon: Ban, label: "vb_cancel_refused", tone: "text-red-300", ring: "border-red-500/50 bg-red-500/10" },
   past: { icon: History, label: "vb_past", tone: "text-slate-300", ring: "border-white/30 bg-white/[0.06]" },
 };
@@ -52,7 +53,7 @@ const TAB_META = {
 export function DatesStatTiles({ value, onChange, counts }) {
   const { lang } = useApp();
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6" data-testid="dates-stat-tiles">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6" data-testid="dates-stat-tiles">
       {DATE_TABS.map(k => { const m = TAB_META[k]; const Icon = m.icon; const on = value === k; return (
         <button key={k} type="button" onClick={() => onChange(k)} data-testid={`dates-tile-${k}`}
           className={`text-start rounded-xl border px-4 py-3 transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5 ${on ? m.ring : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"}`}>

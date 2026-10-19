@@ -3,14 +3,16 @@ import { toast } from "sonner";
 import { UserX } from "lucide-react";
 import { Button } from "./ui/button";
 import { api } from "../lib/api";
-import { ReportPhotos } from "./AdminBookingReports";
+import { ReportPhotos, ReplyView, ReportWindow } from "./AdminBookingReports";
 
 export default function AdminNoShowReports() {
   const [rows, setRows] = useState([]);
   const load = () => api.get("/admin/no-show-reports").then((r) => setRows(r.data.reports || [])).catch(() => {});
   useEffect(() => { load(); }, []);
   const resolve = async (b, action) => {
-    const msg = action === "reversed"
+    const held = b.status === "reported";
+    const msg = held ? (action === "reversed" ? `Pay all 🪙${b.coins} (on hold) to ${b.vip?.name}? The date counts as attended.` : `Uphold the report and refund all 🪙${b.coins} (on hold) to ${b.client?.name}?`)
+      : action === "reversed"
       ? `Reverse this report? Up to 🪙${b.refund || b.coins} will be taken back from ${b.client?.name} and paid to ${b.vip?.name}.`
       : `Uphold this report? ${b.client?.name} keeps the full refund.`;
     if (!window.confirm(msg)) return;
@@ -25,16 +27,17 @@ export default function AdminNoShowReports() {
         return (
           <div key={b.id} className="py-3 border-t border-white/5 flex flex-wrap items-start gap-3" data-testid={`admin-no-show-${b.id}`}>
             <div className="flex-1 min-w-[260px]">
-              <div className="text-sm"><b>{b.client?.name}</b> reported <b>{b.vip?.name}</b> · {b.date} {b.start}–{b.end} · refunded 🪙{b.refund ?? b.coins}{b.taxi_coins ? ` (incl. taxi 🪙${b.taxi_coins})` : ""} · <span className={`uppercase ${open ? "text-rose-300" : "text-slate-400"}`} data-testid={`admin-no-show-status-${b.id}`}>{r.status}</span></div>
+              <div className="text-sm"><b>{b.client?.name}</b> reported <b>{b.vip?.name}</b> · {b.date} {b.start}–{b.end} · {b.status === "reported" ? `on hold 🪙${b.coins}` : `refunded 🪙${b.refund ?? b.coins}`}{b.taxi_coins ? ` (incl. taxi 🪙${b.taxi_coins})` : ""} · <span className={`uppercase ${open ? "text-rose-300" : "text-slate-400"}`} data-testid={`admin-no-show-status-${b.id}`}>{r.status}</span></div>
               <div className="text-[11px] text-slate-500 mt-0.5">Reported {new Date(r.created_at).toLocaleString()}{b.arrived_at ? ` · client checked in at ${new Date(b.arrived_at).toLocaleTimeString()}` : ""}{b.late ? ` · VIP said running ${b.late.minutes} min late` : ""}</div>
               {r.note && <div className="text-xs text-slate-300 mt-1.5 rounded-md border border-white/10 bg-white/5 p-2" data-testid={`admin-no-show-note-${b.id}`}>"{r.note}"</div>}
               <ReportPhotos photos={r.photo ? [r.photo] : []} testid={`admin-no-show-photo-${b.id}`} />
+              {b.status === "reported" && <><ReplyView reply={r.reply} testid={`admin-no-show-reply-${b.id}`} /><ReportWindow r={r} testid={`admin-no-show-window-${b.id}`} /></>}
               {r.status === "reversed" && <div className="text-[11px] text-amber-300 mt-1">🪙{b.no_show_reversed_coins || 0} paid to the VIP</div>}
             </div>
             {open && (
               <div className="flex gap-2">
-                <Button size="sm" data-testid={`admin-no-show-valid-${b.id}`} onClick={() => resolve(b, "valid")} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0">Uphold</Button>
-                <Button size="sm" variant="outline" data-testid={`admin-no-show-reverse-${b.id}`} onClick={() => resolve(b, "reversed")} className="bg-white/5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10">VIP showed up</Button>
+                <Button size="sm" data-testid={`admin-no-show-valid-${b.id}`} onClick={() => resolve(b, "valid")} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0">{b.status === "reported" ? "Uphold & refund client (default)" : "Uphold"}</Button>
+                <Button size="sm" variant="outline" data-testid={`admin-no-show-reverse-${b.id}`} onClick={() => resolve(b, "reversed")} className="bg-white/5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10">{b.status === "reported" ? "VIP showed up — pay VIP" : "VIP showed up"}</Button>
               </div>
             )}
           </div>

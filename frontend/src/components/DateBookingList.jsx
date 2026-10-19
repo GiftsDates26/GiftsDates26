@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { toast } from "sonner";
 import { CalendarHeart, Camera, Clock, Check, X, Car, Info, Coins, Flag } from "lucide-react";
-import DateReportForm, { DateStartedNote, ReportReplyBlock } from "./DateReportForm";
+import DateReportForm, { DateStartedNote, ReportReplyBlock, ReportStatusNote } from "./DateReportForm";
 import { MapsLink } from "./AddressPicker";
 import VerifiedAddressForm, { addrHintKey, addressReady, addrPayload, addrErrKey, UnverifiedNote } from "./VerifiedAddressForm";
 import AddToCalendar from "./AddToCalendar";
@@ -17,7 +17,7 @@ import DirectionsButton from "./DirectionsButton";
 import { SectionTitle, EmptyLine } from "./DatesUI";
 import CountdownBadge from "./CountdownBadge";
 import LiveLocation from "./LiveLocation";
-import { matchesFilter, tabOf } from "../lib/dateFilters";
+import { matchesFilter, tabOf, bookingStatus } from "../lib/dateFilters";
 
 const vipEnd = (b) => new Date(new Date(b.scheduled_at).getTime() + (b.duration_min || 150) * 60000);
 const hm = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -55,9 +55,9 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   const outgoing = (data.outgoing || []).filter(matches);
   const all = [...incoming.map(b => ({ b, inc: true })), ...outgoing.map(b => ({ b, inc: false }))]
     .sort((x, y) => String(x.b.scheduled_at).localeCompare(String(y.b.scheduled_at)));
-  const statusKey = all.map(x => `${x.b.status}:${x.inc}`).join(",");
-  useEffect(() => { onItems?.(all.map(x => ({ id: x.b.id, status: x.b.status, inc: x.inc, start: x.b.scheduled_at, name: x.inc ? x.b.from_name : x.b.to_name, place: x.b.venue }))); }, [statusKey]); // eslint-disable-line
-  const shown = all.filter(x => tab ? tabOf(x.b.status, x.inc) === tab : matchesFilter(x.b.status, filter));
+  const statusKey = all.map(x => `${bookingStatus(x.b)}:${x.inc}`).join(",");
+  useEffect(() => { onItems?.(all.map(x => ({ id: x.b.id, status: bookingStatus(x.b), inc: x.inc, start: x.b.scheduled_at, name: x.inc ? x.b.from_name : x.b.to_name, place: x.b.venue }))); }, [statusKey]); // eslint-disable-line
+  const shown = all.filter(x => tab ? tabOf(bookingStatus(x.b), x.inc) === tab : matchesFilter(x.b.status, filter));
 
   const [cancelFor, setCancelFor] = useState(null);
   const cancel = (b, isRecipient) => { const taxi = b.taxi?.status === "sent" ? (b.taxi?.coins || 0) : 0; setCancelFor({ b, isRecipient, taxi, total: b.coins + taxi }); };
@@ -297,8 +297,9 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
       </div>
     </div>
       {started && !underReview && b.status !== "released" && <DateStartedNote id={b.id} />}
-      {reportFor === b.id && <DateReportForm id={b.id} onSubmit={(p) => submitReport(b.id, p)} />}
-      {b.report && b.report.reporter_id !== user?.id && <ReportReplyBlock id={b.id} info={{ by_me: false, reasons: b.report.reasons, details: b.report.details, status: b.report.status || "open", replied: !!b.report.reply }}
+      {reportFor === b.id && <DateReportForm id={b.id} onSubmit={(p) => submitReport(b.id, p)} role={isIncoming ? "recipient" : "inviter"} />}
+      {b.report && b.report.reporter_id === user?.id && <ReportStatusNote id={b.id} info={{ by_me: true, status: b.report.status || "open", replied: !!b.report.reply, reply_deadline: b.report.reply_deadline, reporter_role: b.report.reporter_role || "inviter" }} />}
+      {b.report && b.report.reporter_id !== user?.id && <ReportReplyBlock id={b.id} info={{ by_me: false, reasons: b.report.reasons, details: b.report.details, status: b.report.status || "open", replied: !!b.report.reply, reply_deadline: b.report.reply_deadline, reporter_role: b.report.reporter_role || (b.report.reporter_id === b.from_id ? "inviter" : "recipient") }}
         onSubmit={async (p) => { await api.post(`/dates/report/${b.id}/reply`, p); await load(); }} />}
     </div>
   ); };

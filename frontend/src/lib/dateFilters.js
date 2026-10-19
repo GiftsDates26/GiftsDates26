@@ -7,11 +7,14 @@ const GROUPS = {
   cancelled: ["CANCELLED", "CANCELLED_TRANSPORTATION", "REFUNDED", "cancelled", "declined"],
 };
 
-export const DATE_TABS = ["requests", "mine", "confirmed", "cancelled", "past"];
-const PAST_EXTRA = ["REPORTED", "UNDER_ADMIN_REVIEW"];
+export const DATE_TABS = ["requests", "mine", "confirmed", "review", "cancelled", "past"];
+const REVIEW = ["REPORTED", "UNDER_ADMIN_REVIEW"];
+// booked dates keep their status while a report is open — treat them as REPORTED for tabs
+export const bookingStatus = (b) => (b.report && (b.report.status || "open") === "open" ? "REPORTED" : b.status);
 export const tabOf = (status, incoming) => {
   if (GROUPS.cancelled.includes(status)) return "cancelled";
-  if (GROUPS.completed.includes(status) || PAST_EXTRA.includes(status)) return "past";
+  if (REVIEW.includes(status)) return "review";
+  if (GROUPS.completed.includes(status)) return "past";
   if (GROUPS.confirmed.includes(status)) return "confirmed";
   return incoming ? "requests" : "mine";
 };

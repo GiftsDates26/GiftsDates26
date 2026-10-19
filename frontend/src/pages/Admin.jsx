@@ -11,7 +11,7 @@ import AdminVerifications from "../components/AdminVerifications";
 import AdminSupport from "../components/AdminSupport";
 import AdminTranslations from "../components/AdminTranslations";
 import AdminLiveLocations from "../components/AdminLiveLocations";
-import AdminBookingReports, { ReportPhotos, ReplyView } from "../components/AdminBookingReports";
+import AdminBookingReports, { ReportPhotos, ReplyView, ReportWindow } from "../components/AdminBookingReports";
 import AdminNoShowReports from "../components/AdminNoShowReports";
 
 export default function Admin() {
@@ -102,7 +102,7 @@ export default function Admin() {
                 <div className="flex-1 min-w-[260px]">
                   <div className="text-sm"><b>{d.inviter?.name}</b> → <b>{d.recipient?.name}</b> · <span className="uppercase text-rose-300">{t(`ds_${d.status}`, lang) === `ds_${d.status}` ? d.status : t(`ds_${d.status}`, lang)}</span></div>
                   <div className="text-xs text-slate-400">{(d.chosen_idea || {}).name || "—"} · 🪙{d.total_hold || d.coins} · {(d.location || {}).venue || ""}</div>
-                  {d.report && <div className="text-xs text-rose-300 mt-1" data-testid={`admin-date-report-${d.id}`}>REPORT: {(d.report.reasons || []).join(", ")} — "{d.report.details}"{d.report.evidence ? ` · evidence: ${d.report.evidence}` : ""}<ReportPhotos photos={d.report.photos} testid={`admin-date-report-photos-${d.id}`} /><ReplyView reply={d.report.reply} testid={`admin-date-reply-${d.id}`} /></div>}
+                  {d.report && <div className="text-xs text-rose-300 mt-1" data-testid={`admin-date-report-${d.id}`}>REPORT: {(d.report.reasons || []).join(", ")} — "{d.report.details}"{d.report.evidence ? ` · evidence: ${d.report.evidence}` : ""}<ReportPhotos photos={d.report.photos} testid={`admin-date-report-photos-${d.id}`} /><ReplyView reply={d.report.reply} testid={`admin-date-reply-${d.id}`} /><ReportWindow r={{ ...d.report, reporter_role: d.report.reporter_role || (d.report.reporter_id === d.inviter_id ? "inviter" : "recipient") }} testid={`admin-date-window-${d.id}`} /></div>}
                   {d.verification?.photo && <a href={fileUrl(d.verification.photo)} target="_blank" rel="noreferrer" className="text-xs text-emerald-300 underline" data-testid={`admin-date-photo-${d.id}`}>{t("ad_view_photo", lang)} ({d.verification.status})</a>}
                 </div>
                 {d.verification?.status === "pending" && <>
@@ -110,8 +110,12 @@ export default function Admin() {
                   <Button data-testid={`admin-date-reject-${d.id}`} size="sm" variant="outline" onClick={() => adVerify(d.id, false)} className="bg-rose-500/10 border-rose-500/40 text-rose-300">{t("ad_reject", lang)}</Button>
                 </>}
                 {!["COMPLETED", "COMPLETED_AUTO", "REFUNDED", "CANCELLED", "CANCELLED_TRANSPORTATION"].includes(d.status) && <>
-                  <Button data-testid={`admin-date-payout-${d.id}`} size="sm" onClick={() => askResolve(d, "payout_recipient")} variant="outline" className="bg-white/5 border-white/15">{t("ad_payout_recipient", lang)}</Button>
-                  <Button data-testid={`admin-date-refund-${d.id}`} size="sm" onClick={() => askResolve(d, "refund_inviter")} variant="outline" className="bg-white/5 border-white/15">{t("ad_refund_inviter", lang)}</Button>
+                  {(() => { const def = d.report && (d.report.status || "open") === "open" ? ((d.report.reporter_role || (d.report.reporter_id === d.inviter_id ? "inviter" : "recipient")) === "recipient" ? "payout_recipient" : "refund_inviter") : null;
+                    const cls = (a) => def === a ? "bg-amber-500/15 border-amber-500/50 text-amber-100" : "bg-white/5 border-white/15";
+                    return <>
+                      <Button data-testid={`admin-date-payout-${d.id}`} size="sm" onClick={() => askResolve(d, "payout_recipient")} variant="outline" className={cls("payout_recipient")}>{t("ad_payout_recipient", lang)}{def === "payout_recipient" ? " (default)" : ""}</Button>
+                      <Button data-testid={`admin-date-refund-${d.id}`} size="sm" onClick={() => askResolve(d, "refund_inviter")} variant="outline" className={cls("refund_inviter")}>{t("ad_refund_inviter", lang)}{def === "refund_inviter" ? " (default)" : ""}</Button>
+                    </>; })()}
                   <Button data-testid={`admin-date-split-${d.id}`} size="sm" onClick={() => askResolve(d, "split")} variant="outline" className="bg-white/5 border-white/15">{t("ad_split", lang)}</Button>
                 </>}
               </div>

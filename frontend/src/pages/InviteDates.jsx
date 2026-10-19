@@ -14,7 +14,7 @@ import CancelledDates from "../components/CancelledDates";
 import { EmptyDates, DatesStatTiles, DatesTabBar, TabEmpty } from "../components/DatesUI";
 import CountdownBadge from "../components/CountdownBadge";
 import LiveLocation from "../components/LiveLocation";
-import DateReportForm, { DateStartedNote, ReportReplyBlock } from "../components/DateReportForm";
+import DateReportForm, { DateStartedNote, ReportReplyBlock, ReportStatusNote } from "../components/DateReportForm";
 import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
 import VerifiedAddressForm, { addressReady, addrErrKey, addrPayload, UnverifiedNote } from "../components/VerifiedAddressForm";
@@ -327,7 +327,8 @@ function DateCard({ d, reload }) {
       {d.status === "DATE_CONFIRMED" && <div className="mt-3"><LiveLocation kind="invite" id={d.id} otherName={d.other?.name}
         venue={d.location?.lat != null && d.location?.lng != null ? `${d.location.lat},${d.location.lng}` : [d.location?.venue, d.location?.address, d.location?.city, d.location?.country].filter(Boolean).join(", ")} /></div>}
 
-      {showReport && <DateReportForm id={d.id} onSubmit={submitReport} />}
+      {showReport && <DateReportForm id={d.id} onSubmit={submitReport} role={isInv ? "inviter" : "recipient"} />}
+      {d.report_info?.by_me && <div className="mt-3"><ReportStatusNote id={d.id} info={d.report_info} /></div>}
       {d.report_info && !d.report_info.by_me && <div className="mt-3"><ReportReplyBlock id={d.id} info={d.report_info} onSubmit={async (p) => { await post("/report/reply", p); await reload(); }} /></div>}
       {showVerify && (
         <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2" data-testid={`verify-form-${d.id}`}>

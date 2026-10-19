@@ -2955,6 +2955,7 @@ async def cancel_date(bid: str, user=Depends(get_current_user)):
     b = await db.date_bookings.find_one({"id": bid})
     if not b: raise HTTPException(404, "Not found")
     if user["id"] not in (b["from_id"], b["to_id"]): raise HTTPException(403, "No access")
+    if _report_open(b): raise HTTPException(400, "UNDER_REVIEW")
     if b["status"] not in ("escrow", "accepted") and not (b["status"] == "confirmed" and b.get("auto_confirmed")):
         raise HTTPException(400, "Cannot cancel")
     now = datetime.now(timezone.utc).isoformat()
@@ -3017,13 +3018,27 @@ def _report_view(r, viewer_id):
     if not r: return None
     reply = r.get("reply")
     return {"by_me": r.get("reporter_id") == viewer_id, "reasons": r.get("reasons") or [], "details": r.get("details"),
-            "status": r.get("status") or "open", "replied": bool(reply), "reply_at": (reply or {}).get("at")}
+            "status": r.get("status") or "open", "replied": bool(reply), "reply_at": (reply or {}).get("at"),
+            "reply_deadline": r.get("reply_deadline"), "reporter_role": r.get("reporter_role"), "outcome": r.get("outcome")}
+
+REPORT_REPLY_HOURS = 24
+
+def _reply_closed(r) -> bool:
+    dl = _pdt((r or {}).get("reply_deadline"))
+    return bool(dl and _now() > _aware(dl))
+
+def _reported_msg(role: str) -> str:
+    """Text for the reported person: 24h to reply, default outcome, admin decides."""
+    who = "the coins will be refunded to the person who invited you" if role == "inviter" else "all coins from this date will go to the invited person"
+    return (f"Your date was reported to our support team. Nothing has been cancelled yet. You have {REPORT_REPLY_HOURS} hours to reply with your side and photo proofs. "
+            f"If you don't reply or there is no strong evidence, {who}. Support reviews every report before any coins move.")
 
 async def _save_reply(coll, did, rep_doc, parties, user, req, label):
     if not rep_doc: raise HTTPException(404, "No report")
     if user["id"] not in parties or rep_doc.get("reporter_id") == user["id"]: raise HTTPException(403, "Only the reported person can reply")
     if rep_doc.get("reply"): raise HTTPException(409, "ALREADY_REPLIED")
     if (rep_doc.get("status") or "open") != "open": raise HTTPException(400, "REPORT_CLOSED")
+    if _reply_closed(rep_doc): raise HTTPException(400, "REPLY_WINDOW_CLOSED")
     if len((req.details or "").strip()) < 10: raise HTTPException(400, "Please describe your side (min 10 chars)")
     reply = {"by": user["id"], "details": req.details.strip(), "photos": await _report_photos(user, req.photos), "at": _iso()}
     await coll.update_one({"id": did}, {"$set": {"report.reply": reply}})
@@ -3147,11 +3162,13 @@ async def booking_report(bid: str, req: InviteReportReq, user=Depends(get_curren
     sched = _aware(_pdt(b.get("scheduled_at")) or _now())
     if not (sched <= _now() <= sched + timedelta(hours=BOOKING_REPORT_HOURS)): raise HTTPException(400, "REPORT_WINDOW_CLOSED")
     if len((req.details or "").strip()) < 10: raise HTTPException(400, "Please describe what happened (min 10 chars)")
-    rep = {"reporter_id": user["id"], "reasons": req.reasons, "details": req.details.strip(), "evidence": req.evidence,
-           "photos": await _report_photos(user, req.photos), "status": "open", "created_at": _iso()}
+    role = "inviter" if user["id"] == b["from_id"] else "recipient"
+    rep = {"reporter_id": user["id"], "reporter_role": role, "reasons": req.reasons, "details": req.details.strip(), "evidence": req.evidence,
+           "photos": await _report_photos(user, req.photos), "status": "open", "created_at": _iso(),
+           "reply_deadline": _iso(_now() + timedelta(hours=REPORT_REPLY_HOURS))}
     await db.date_bookings.update_one({"id": bid}, {"$set": {"report": rep}})
     other = b["to_id"] if user["id"] == b["from_id"] else b["from_id"]
-    await notify(other, "date_request", "Your date was reported", f"Your date at {b.get('venue') or ''} was reported to our support team. We will contact you shortly — please reply, otherwise the coins may be refunded to the other person.", {"booking_id": bid}, email=True, link=DATES_LINK, cta="View Date")
+    await notify(other, "date_request", "Your date was reported — reply within 24h", _reported_msg(role), {"booking_id": bid}, email=True, link=DATES_LINK, cta="Reply now")
     for aid in await _admin_ids():
         await notify(aid, "date_request", "Date report submitted", f"A booked date ({bid}) was reported. Review the case in admin.", {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/admin", cta="View Case")
     return {"ok": True, "reported": True}
@@ -3178,6 +3195,13 @@ async def admin_booking_resolve(bid: str, action: str, admin=Depends(get_admin))
             "report.status": "refunded", "report.resolved_at": now, **({"taxi.status": "refunded"} if tcoins else {})}})
         await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "date_report_refund", "from_id": b["to_id"], "to_id": b["from_id"], "cost": base, "net": base, "created_at": now})
         msg = f"Support reviewed the report for the date at {b.get('venue') or ''}. 🪙 {base} were refunded to the person who booked."
+    elif action == "release_recipient":
+        if b["status"] not in ("accepted", "confirmed"): raise HTTPException(400, "Coins already settled")
+        await db.users.update_one({"id": b["to_id"]}, {"$inc": {"escrow": -b["coins"], "withdrawable": b["coins"]}})
+        await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "released", "released_net": b["coins"], "platform_cut": 0, "released_at": now,
+            "report.status": "released", "report.resolved_at": now}})
+        await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "date_report_release", "from_id": b["from_id"], "to_id": b["to_id"], "cost": b["coins"], "net": b["coins"], "created_at": now})
+        msg = f"Support reviewed the report for the date at {b.get('venue') or ''}. All 🪙 {b['coins']} were released to the invited person."
     elif action == "dismiss":
         await db.date_bookings.update_one({"id": bid}, {"$set": {"report.status": "dismissed", "report.resolved_at": now}})
         msg = f"Support reviewed the report for the date at {b.get('venue') or ''} and closed it. The date continues as normal."
@@ -3898,7 +3922,7 @@ async def vs_my_schedule(user=Depends(get_current_user)):
         b["requester"] = await _vs_requester_card(b["requester_id"])
         bookings.append(b)
     pending = [b for b in bookings if b["status"] == "pending"]
-    confirmed = [b for b in bookings if b["status"] == "confirmed"]
+    confirmed = [b for b in bookings if b["status"] in ("confirmed", "reported")]
     past = [b for b in bookings if b["status"] in ("completed", "declined", "cancelled")]
     return {"is_vip": is_vip(user), "blocks": blocks,
             "pending": pending, "confirmed": confirmed, "past": past,
@@ -3919,7 +3943,7 @@ async def _vs_earnings(vip_id: str, bookings: list) -> dict:
     for b in bookings:
         if b["status"] == "completed": add(b.get("completed_at"), b.get("coins"))
         elif b["status"] == "cancelled": add(b.get("cancelled_at"), b.get("compensation"))
-    held = sum(int(b.get("coins") or 0) for b in bookings if b["status"] in ("pending", "confirmed"))
+    held = sum(int(b.get("coins") or 0) for b in bookings if b["status"] in ("pending", "confirmed", "reported"))
     async for d in db.date_bookings.find({"to_id": vip_id, "vip": True}, {"_id": 0, "status": 1, "coins": 1, "released_net": 1, "released_at": 1}):
         if d["status"] == "released": add(d.get("released_at"), d.get("released_net"))
         elif d["status"] in ("escrow", "accepted", "confirmed"): held += int(d.get("coins") or 0)
@@ -4237,15 +4261,43 @@ async def vs_no_show(bid: str, note: str = Form(""), photo: Optional[UploadFile]
         await db.files.insert_one({"id": str(uuid.uuid4()), "storage_path": photo_path, "user_id": user["id"], "content_type": ct,
                                    "size": res["size"], "private": True, "is_deleted": False, "created_at": now.isoformat()})
     if not note and not photo_path: raise HTTPException(400, "EVIDENCE_REQUIRED")
-    coins = int(b.get("coins") or 0)
-    await _vs_release(b, user["name"], "no_show")
-    report = {"note": note, "photo": photo_path, "created_at": now.isoformat(), "status": "open"}
-    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "cancelled", "no_show": True, "no_show_report": report, "cancelled_at": now.isoformat(),
-                                                         "cancelled_by": user["id"], "refund": coins, "compensation": 0, "platform_fee": 0}})
-    await notify(b["vip_id"], "vs_no_show", "No-show reported",
-                 f"{user['name']} reported that you did not show up for the date on {b['date']} · {b['start']}. All coins were refunded to the client; our team will review the report.",
-                 {"booking_id": bid}, email=True)
-    return {"status": "cancelled", "refunded": coins}
+    # Nothing is cancelled or refunded here: coins stay on hold, the VIP gets 24h to reply, then an admin decides.
+    report = {"note": note, "photo": photo_path, "created_at": now.isoformat(), "status": "open", "reporter_role": "inviter",
+              "reply_deadline": (now + timedelta(hours=REPORT_REPLY_HOURS)).isoformat()}
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "reported", "no_show": True, "no_show_report": report, "reported_at": now.isoformat()}})
+    await notify(b["vip_id"], "vs_no_show", "No-show reported — reply within 24h",
+                 f"{user['name']} reported that you did not show up for the date on {b['date']} · {b['start']}. " + _reported_msg("inviter"),
+                 {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Reply now")
+    for aid in await _admin_ids():
+        await notify(aid, "vs_no_show", "VIP no-show reported", f"Booking {bid} was reported as a no-show. The VIP has 24h to reply.", {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/admin", cta="View Case")
+    return {"status": "reported"}
+
+@api.post("/vip/schedule/bookings/{bid}/no-show/reply")
+async def vs_no_show_reply(bid: str, note: str = Form(""), photo: Optional[UploadFile] = File(None), user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b: raise HTTPException(404, "Not found")
+    r = b.get("no_show_report") or {}
+    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the VIP can reply")
+    if r.get("status") != "open" or b["status"] != "reported": raise HTTPException(400, "REPORT_CLOSED")
+    if r.get("reply"): raise HTTPException(409, "ALREADY_REPLIED")
+    if _reply_closed(r): raise HTTPException(400, "REPLY_WINDOW_CLOSED")
+    note = (note or "").strip()[:1000]
+    if len(note) < 10: raise HTTPException(400, "Please describe your side (min 10 chars)")
+    photo_path = None
+    if photo is not None and photo.filename:
+        if not (photo.content_type or "").startswith("image/"): raise HTTPException(400, "IMAGE_ONLY")
+        data = await photo.read()
+        if len(data) > 10 * 1024 * 1024: raise HTTPException(400, "FILE_TOO_LARGE")
+        ext = (photo.filename.rsplit(".", 1)[-1] if "." in photo.filename else "jpg").lower()[:5]
+        res = put_object(f"{APP_NAME}/no-show/{bid}/{uuid.uuid4()}.{ext}", data, photo.content_type)
+        photo_path = res["path"]
+        await db.files.insert_one({"id": str(uuid.uuid4()), "storage_path": photo_path, "user_id": user["id"], "content_type": photo.content_type,
+                                   "size": res["size"], "private": True, "is_deleted": False, "created_at": _iso()})
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"no_show_report.reply": {"by": user["id"], "details": note, "photos": [photo_path] if photo_path else [], "at": _iso()}}})
+    await notify(b["requester_id"], "vs_no_show", "The VIP replied to your report", "Support received their side and will review both.", {"booking_id": bid}, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+    for aid in await _admin_ids():
+        await notify(aid, "vs_no_show", "No-show reply received", f"{user['name']} replied to the no-show report ({bid}).", {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/admin", cta="View Case")
+    return {"ok": True}
 
 @api.get("/admin/no-show-reports")
 async def admin_no_show_reports(admin=Depends(get_admin)):
@@ -4261,6 +4313,21 @@ async def admin_no_show_resolve(bid: str, action: str, admin=Depends(get_admin))
     if action not in ("valid", "reversed"): raise HTTPException(400, "Bad action")
     now = datetime.now(timezone.utc).isoformat()
     sets = {"no_show_report.status": action, "no_show_report.resolved_at": now, "no_show_report.resolved_by": admin["id"]}
+    coins = int(b.get("coins") or 0)
+    if b["status"] == "reported":
+        # coins are still on hold — the admin decision is the only thing that moves them
+        if action == "valid":
+            await _vs_release(b, "support", "no_show")
+            sets.update({"status": "cancelled", "cancelled_at": now, "cancelled_by": "support", "refund": coins, "compensation": 0, "platform_fee": 0})
+            msg_c, msg_v = f"Support upheld your no-show report. 🪙 {coins} were refunded to you.", f"After review, the no-show report for {b['date']} · {b['start']} was upheld. The coins were refunded to the client."
+        else:
+            if coins: await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"escrow": -coins, "withdrawable": coins}})
+            sets.update({"status": "completed", "completed_at": now})
+            msg_c, msg_v = f"After review, the date on {b['date']} · {b['start']} was counted as attended. 🪙 {coins} were paid to the VIP.", f"After review you were paid 🪙 {coins} for the date on {b['date']}."
+        await db.vip_sched.update_one({"id": bid}, {"$set": sets})
+        await notify(b["requester_id"], "vs_no_show", "No-show report resolved", msg_c, {"booking_id": bid}, email=True)
+        await notify(b["vip_id"], "vs_no_show", "No-show report resolved", msg_v, {"booking_id": bid}, email=True)
+        return {"ok": True, "status": action}
     if action == "reversed":
         client = await db.users.find_one({"id": b["requester_id"]}, {"_id": 0, "coins": 1})
         amount = min(int(b.get("refund") or 0), int((client or {}).get("coins") or 0))
@@ -5561,11 +5628,14 @@ async def invite_report(did: str, req: InviteReportReq, user=Depends(get_current
     if not (start <= _now() <= start + timedelta(hours=DATE_WINDOW_HOURS)):
         raise HTTPException(400, "REPORT_WINDOW_CLOSED")
     if len((req.details or "").strip()) < 10: raise HTTPException(400, "Please describe what happened (min 10 chars)")
-    rep = {"reporter_id": user["id"], "reasons": req.reasons, "details": req.details.strip(), "evidence": req.evidence,
-           "photos": await _report_photos(user, req.photos), "created_at": _iso()}
+    if d.get("report") and (d["report"].get("status") or "open") == "open": raise HTTPException(409, "ALREADY_REPORTED")
+    role = "inviter" if user["id"] == d["inviter_id"] else "recipient"
+    rep = {"reporter_id": user["id"], "reporter_role": role, "reasons": req.reasons, "details": req.details.strip(), "evidence": req.evidence,
+           "photos": await _report_photos(user, req.photos), "status": "open", "created_at": _iso(),
+           "reply_deadline": _iso(_now() + timedelta(hours=REPORT_REPLY_HOURS)), "prev_status": d["status"]}
     await db.dates.update_one({"id": did}, {"$set": {"report": rep}})
     other = d["recipient_id"] if user["id"] == d["inviter_id"] else d["inviter_id"]
-    await notify(other, "date_request", "Your date was reported", "Your date was reported to our support team. We will contact you shortly — please reply, otherwise the coins may be refunded to the other person.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date")
+    await notify(other, "date_request", "Your date was reported — reply within 24h", _reported_msg(role), {"date_id": did}, email=True, link=DATES_LINK, cta="Reply now")
     await _log_status(did, "REPORTED", user["id"])
     for aid in await _admin_ids():
         await notify(aid, "date_request", "Date report submitted", f"A date ({did}) was reported. Review the case in admin.", {"date_id": did}, email=True, link=f"{PUBLIC_APP_URL}/admin", cta="View Case")
@@ -5833,16 +5903,36 @@ async def admin_resolve(did: str, action: str, user=Depends(get_current_user)):
     await _require_admin(user)
     d = await db.dates.find_one({"id": did}, {"_id": 0})
     if not d: raise HTTPException(404, "Not found")
+    if d["status"] in ("COMPLETED", "COMPLETED_AUTO", "REFUNDED", "CANCELLED", "CANCELLED_TRANSPORTATION"): raise HTTPException(400, "Coins already settled")
+    role = (d.get("report") or {}).get("reporter_role")
+    if action in ("reporter_wins", "other_wins"):
+        if not role: raise HTTPException(400, "No report")
+        inviter_wins = (role == "inviter") == (action == "reporter_wins")
+        action = "refund_inviter" if inviter_wins else "payout_recipient"
     if action == "payout_recipient": await _complete(d, "COMPLETED")
     elif action == "refund_inviter": await _refund(d, "full_inviter", "REFUNDED")
     elif action == "split": await _refund(d, "split", "REFUNDED")
     else: raise HTTPException(400, "Unknown action")
+    if d.get("report"):
+        await db.dates.update_one({"id": did}, {"$set": {"report.status": "resolved", "report.outcome": action, "report.resolved_at": _iso(), "report.resolved_by": user["id"]}})
     await db.date_admin_log.insert_one({"id": str(uuid.uuid4()), "date_id": did, "admin_id": user["id"], "action": action, "at": _iso()})
     return {"ok": True}
 
 # ---------- Cron endpoints ----------
+async def _report_window_alerts():
+    """When a report's 24h reply window ends, tell admins the case is ready for a decision (coins never move automatically)."""
+    for coll, key, f in ((db.dates, "date_id", "report"), (db.date_bookings, "booking_id", "report"), (db.vip_sched, "booking_id", "no_show_report")):
+        async for x in coll.find({f"{f}.status": {"$in": [None, "open"]}, f"{f}.reply_deadline": {"$lte": _iso()}, f"{f}.admin_alerted": {"$ne": True}}, {"_id": 0, "id": 1, f: 1}):
+            await coll.update_one({"id": x["id"]}, {"$set": {f"{f}.admin_alerted": True}})
+            replied = bool(x[f].get("reply"))
+            body = (f"The 24h reply window for report {x['id']} has ended " + ("— the other side replied. Please compare both sides and decide." if replied
+                    else "with no reply. Default outcome: the reporter wins. Please confirm the decision in admin."))
+            for aid in await _admin_ids():
+                await notify(aid, "date_request", "Report ready for decision", body, {key: x["id"]}, email=True, link=f"{PUBLIC_APP_URL}/admin", cta="Decide")
+
 async def _run_lifecycle():
     now = _now()
+    await _report_window_alerts()
     docs = await db.dates.find({"status": "DATE_CONFIRMED"}, {"_id": 0}).to_list(500)
     for d in docs:
         start = _pdt((d.get("location") or {}).get("scheduled_start"))

@@ -24,7 +24,7 @@ export const DateStartedNote = ({ id }) => {
   );
 };
 
-export default function DateReportForm({ id, onSubmit, reply = false }) {
+export default function DateReportForm({ id, onSubmit, reply = false, role }) {
   const { lang } = useApp();
   const tr = (k) => t(k, lang);
   const [reasons, setReasons] = useState([]);
@@ -84,22 +84,42 @@ export default function DateReportForm({ id, onSubmit, reply = false }) {
         <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={addPhotos} data-testid={`report-photo-input-${id}`} />
         {!reply && <Input data-testid={`report-evidence-${id}`} value={evidence} onChange={e => setEvidence(e.target.value)} placeholder={tr("id_report_evidence_ph")} className="bg-white/5 border-white/10 h-9" />}
       </div>
-      <div className="text-[11px] text-slate-400" data-testid={`report-note-${id}`}>{tr(reply ? "rr_note" : "rp_note")}</div>
+      <div className="text-[11px] text-slate-400" data-testid={`report-note-${id}`}>{tr(reply ? "rr_note" : role === "recipient" ? "rp_note_recipient" : "rp_note_inviter")}</div>
       <Button data-testid={`${reply ? "reply" : "report"}-submit-${id}`} disabled={busy || uploading} onClick={submit} className="rose-btn text-white border-0 h-9">{tr(reply ? "rr_submit" : "id_submit_report")}</Button>
     </div>
   );
 }
 
+const fmt = (iso, lang) => iso ? new Date(iso).toLocaleString(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+const windowOpen = (info) => !info.reply_deadline || Date.now() < new Date(info.reply_deadline).getTime();
+const outcomeKey = (role) => role === "recipient" ? "rs_outcome_recipient" : "rs_outcome_inviter";
+
+// What the reporter sees while the case is open.
+export const ReportStatusNote = ({ id, info }) => {
+  const { lang } = useApp();
+  if (!info || !info.by_me || (info.status || "open") !== "open") return null;
+  const msg = info.replied ? t("rs_replied", lang) : windowOpen(info) ? t("rs_waiting", lang).replace("{t}", fmt(info.reply_deadline, lang)) : t("rs_no_reply", lang);
+  return (
+    <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] space-y-1" data-testid={`report-status-${id}`}>
+      <div className="font-semibold text-amber-200 flex items-center gap-1"><ShieldAlert size={13} />{t("rs_title", lang)}</div>
+      <div className="text-slate-300">{msg}</div>
+      <div className="text-slate-400">{t(outcomeKey(info.reporter_role), lang)} {t("rs_admin", lang)}</div>
+    </div>
+  );
+};
+
 export const ReportReplyBlock = ({ id, info, onSubmit }) => {
   const { lang } = useApp();
   const [open, setOpen] = useState(false);
   if (!info || info.by_me) return null;
+  const canReply = info.status === "open" && windowOpen(info);
   return (
     <div className="w-full rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 space-y-2" data-testid={`reported-block-${id}`}>
       <div className="text-xs font-semibold text-rose-200 flex items-center gap-1"><ShieldAlert size={13} />{t("rr_you_were_reported", lang)}</div>
+      {info.status === "open" && <div className="text-[11px] text-amber-200" data-testid={`reply-deadline-${id}`}>{canReply ? t("rr_deadline", lang).replace("{t}", fmt(info.reply_deadline, lang)) : !info.replied ? t("rr_closed", lang) : ""} {t(outcomeKey(info.reporter_role), lang)} {t("rs_admin", lang)}</div>}
       <div className="text-[11px] text-slate-300">{(info.reasons || []).join(", ")}{info.details ? ` — "${info.details}"` : ""}</div>
       {info.replied ? <div className="text-[11px] text-emerald-300" data-testid={`reply-sent-${id}`}>{t("rr_sent", lang)}</div>
-        : info.status === "open" && (open ? <DateReportForm id={id} reply onSubmit={async (p) => { await onSubmit(p); setOpen(false); }} />
+        : canReply && (open ? <DateReportForm id={id} reply onSubmit={async (p) => { await onSubmit(p); setOpen(false); }} />
           : <Button size="sm" onClick={() => setOpen(true)} data-testid={`reply-open-${id}`} className="rose-btn text-white border-0 h-8">{t("rr_open", lang)}</Button>)}
     </div>
   );
