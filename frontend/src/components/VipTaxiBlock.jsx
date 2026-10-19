@@ -53,30 +53,35 @@ export default function VipTaxiBlock({ b, who, onDone }) {
   const { lang } = useApp();
   const tx = b.taxi;
   const active = ["pending", "confirmed"].includes(b.status);
-  if (!active && !tx) return null;
-  const status = tx && (
-    <div className="text-xs text-amber-200 flex items-center gap-1.5" data-testid={`vs-taxi-status-${b.id}`}>
-      <Car size={13} /> {t(`vt_st_${tx.status}`, lang).replace("{c}", tx.coins)}
-    </div>
-  );
+  // at the VIP's place the inviter travels and asks the VIP; anywhere else the VIP asks the inviter
+  const asker = b.place === "own" ? "outgoing" : "incoming";
+  const txAsker = tx ? (tx.by === "client" ? "outgoing" : "incoming") : asker;
+  const warn = who === "incoming" && b.status === "pending";
+  const canAsk = who === asker && active && (!tx || tx.status === "declined");
+  const canPay = who !== txAsker && active && tx?.status === "pending" && !(txAsker === "incoming" && ["offered", "address_set"].includes(b.pickup?.status));
+  if (!warn && !tx && !canAsk) return null;
   return (
     <div className="w-full mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-2" data-testid={`vs-taxi-${b.id}`}>
-      {who === "incoming" && b.status === "pending" && (
+      {warn && (
         <div className="flex items-start gap-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5" data-testid={`vs-reject-warning-${b.id}`}>
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           <span>{t("vt_reject_warning", lang).replace("{total}", b.coins)}</span>
         </div>
       )}
-      {status}
-      {who === "incoming" && active && (!tx || tx.status === "declined") && (
+      {tx && (
+        <div className="text-xs text-amber-200 flex items-center gap-1.5" data-testid={`vs-taxi-status-${b.id}`}>
+          <Car size={13} /> {t(`vt_st_${tx.status}`, lang).replace("{c}", tx.coins)}
+        </div>
+      )}
+      {canAsk && (
         <>
-          <p className="text-xs text-slate-400" data-testid={`vs-taxi-note-${b.id}`}>{t("vt_note", lang)}</p>
+          <p className="text-xs text-slate-400" data-testid={`vs-taxi-note-${b.id}`}>{t(asker === "outgoing" ? "vt_note_client" : "vt_note", lang)}</p>
           <TaxiRequestForm b={b} onDone={onDone} lang={lang} />
         </>
       )}
-      {who === "outgoing" && active && tx?.status === "pending" && !["offered", "address_set"].includes(b.pickup?.status) && (
+      {canPay && (
         <>
-          <p className="text-xs text-slate-400">{t("vt_inviter_note", lang)}</p>
+          <p className="text-xs text-slate-400">{t(txAsker === "outgoing" ? "vt_vip_pay_note" : "vt_inviter_note", lang)}</p>
           <InviterTaxiActions b={b} onDone={onDone} lang={lang} />
         </>
       )}
