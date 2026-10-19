@@ -201,7 +201,7 @@ function DateCard({ d, reload }) {
           {d.location?.venue && <div className="text-xs text-slate-400 mt-1"><MapPin size={12} className="inline me-1" />{[d.location.venue, d.location.address, d.location.city].filter(Boolean).join(", ")} <MapsLink loc={d.location} testid={`date-maps-${d.id}`} /><UnverifiedNote show={d.location?.unverified} testid={`date-loc-unverified-${d.id}`} /></div>}
           {!isInv && (d.location?.scheduled_start || d.proposed_start) ? <DateTimeRange id={d.id} start={d.location?.scheduled_start || d.proposed_start} />
             : d.location?.scheduled_start && <div className="text-xs text-slate-400"><Clock size={12} className="inline me-1" />{new Date(d.location.scheduled_start).toLocaleString()} (3h)</div>}
-          {d.transportation?.status && <div className="text-xs text-sky-300 mt-0.5"><Car size={12} className="inline me-1" />{d.transportation.type}: {d.transportation.status}{d.transportation.taxi_amount ? ` · 🪙${d.transportation.taxi_amount}` : ""}{d.transportation.pickup_address ? ` · ${d.transportation.pickup_address}` : ""}{d.transportation.pickup_address && <> <MapsLink loc={{ lat: d.transportation.pickup_lat, lng: d.transportation.pickup_lng, address: d.transportation.pickup_address }} testid={`date-pickup-maps-${d.id}`} /></>}<UnverifiedNote show={d.transportation?.pickup_unverified} testid={`date-pickup-unverified-${d.id}`} /></div>}
+          {d.transportation?.status && <div className="text-xs text-sky-300 mt-0.5"><Car size={12} className="inline me-1" />{d.transportation.type}: {d.transportation.status}{d.transportation.taxi_amount ? ` · 🪙${d.transportation.taxi_amount}` : ""}{d.transportation.pickup_address ? ` · ${d.transportation.pickup_address}` : ""}<UnverifiedNote show={d.transportation?.pickup_unverified} testid={`date-pickup-unverified-${d.id}`} /></div>}
           <div className="text-xs text-amber-300/90 mt-0.5"><Coins size={12} className="inline me-1" />🪙 {d.total_hold || d.coins}{d.gift ? ` + ${tr("id_gift")} ${d.gift.icon || ""}` : ""}</div>
           {reportOpen && <div className="text-[11px] mt-1"><Countdown to={w.report_close} label={tr("id_report_closes")} /></div>}
         </div>
@@ -321,6 +321,8 @@ function DateCard({ d, reload }) {
         {chatEnabled && <Button data-testid={`date-chat-toggle-${d.id}`} onClick={() => setShowChat(v => !v)} variant="outline" className="h-9 bg-sky-500/10 border-sky-500/40 text-sky-300"><MessageCircle size={14} className="me-1" />{tr("id_chat")}</Button>}
         {showCal && (() => { const ev = _calEvent(); return <AddToCalendar id={d.id} title={ev.title} place={ev.place} start={ev.s} end={ev.e} />; })()}
         {d.status === "DATE_CONFIRMED" && (d.location?.address || d.location?.lat != null) && <DirectionsButton loc={d.location} testid={`invite-directions-${d.id}`} />}
+        {isInv && d.transportation?.type === "pickup" && d.transportation?.pickup_address && ["PICKUP_ADDRESS_SELECTED", "DATE_CONFIRMED"].includes(d.status) &&
+          <DirectionsButton loc={{ lat: d.transportation.pickup_lat, lng: d.transportation.pickup_lng, address: d.transportation.pickup_address }} label="dir_pickup" testid={`date-pickup-directions-${d.id}`} />}
       </div>
       {d.status === "DATE_CONFIRMED" && <div className="mt-3"><LiveLocation kind="invite" id={d.id} otherName={d.other?.name}
         venue={d.location?.lat != null && d.location?.lng != null ? `${d.location.lat},${d.location.lng}` : [d.location?.venue, d.location?.address, d.location?.city, d.location?.country].filter(Boolean).join(", ")} /></div>}
