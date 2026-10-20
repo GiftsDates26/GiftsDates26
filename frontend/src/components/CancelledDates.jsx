@@ -3,6 +3,7 @@ import { XCircle, Coins, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
+import { DeclineNote } from "./DeclineReasonDialog";
 
 export default function CancelledDates() {
   const { lang } = useApp();
@@ -53,6 +54,7 @@ export default function CancelledDates() {
                     <span className="inline-flex items-center gap-0.5"><Coins size={11} className="text-amber-300" />{d.total_hold}</span>
                   )}
                 </div>
+                <DeclineNote reason={d.decline_reason} testid={`cancelled-date-reason-${d.id}`} />
               </div>
               {d.refund_amount > 0 && (
                 <div className="text-right shrink-0" data-testid={`cancelled-date-refund-${d.id}`}>

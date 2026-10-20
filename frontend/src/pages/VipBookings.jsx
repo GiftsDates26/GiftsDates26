@@ -18,7 +18,7 @@ import ArrivedButton from "../components/ArrivedButton";
 import TodayStrip from "../components/TodayStrip";
 import EarningsChart from "../components/EarningsChart";
 import NoShowReport, { NoShowCase } from "../components/NoShowReport";
-import DeclineReasonDialog from "../components/DeclineReasonDialog";
+import DeclineReasonDialog, { DeclineNote } from "../components/DeclineReasonDialog";
 import RunningLateButton from "../components/RunningLateButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
@@ -181,6 +181,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
       </div>
     </div>
     {b.reschedule_proposal && ["pending", "confirmed"].includes(b.status) && <RescheduleProposal b={b} who={who} onDone={onReload} />}
+    {b.status === "declined" && <DeclineNote reason={b.decline_reason} testid={`vs-decline-reason-${b.id}`} />}
     {b.status === "reported" && <NoShowCase b={b} who={who} onDone={onReload} />}
     <VipPickupBlock b={b} who={who} onDone={onReload} onCancel={onCancel} />
     <VipTaxiBlock b={b} who={who} onDone={onReload} />

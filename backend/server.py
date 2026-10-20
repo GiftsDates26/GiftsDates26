@@ -161,6 +161,22 @@ async def ensure_match(a_id: str, b_id: str, reason: str = "like") -> tuple[str,
     await db.conversations.insert_one({"id": conv_id, "users": [a_id, b_id], "created_at": now, "last_message": None})
     return conv_id, True
 
+async def _date_chat_card(from_id: str, to_id: str, kind: str, ref_id: str, event: str, text: str,
+                          action_for: Optional[str] = None, data: Optional[dict] = None):
+    """Post a date event card (invite, location, decline…) into the regular chat between the two people."""
+    conv = await db.conversations.find_one({"users": {"$all": [from_id, to_id]}}, {"id": 1})
+    cid = conv["id"] if conv else (await ensure_match(from_id, to_id, "date"))[0]
+    now = datetime.now(timezone.utc).isoformat()
+    await db.messages.update_many({"ref_id": ref_id, "type": "date_card"}, {"$set": {"action_for": None}})
+    await db.messages.insert_one({"id": str(uuid.uuid4()), "conversation_id": cid, "from_id": from_id, "type": "date_card",
+                                  "kind": kind, "ref_id": ref_id, "event": event, "text": text, "action_for": action_for,
+                                  "data": data or {}, "created_at": now})
+    await db.conversations.update_one({"id": cid}, {"$set": {"last_message": text, "last_at": now}})
+
+def _loc_card(l: dict) -> dict:
+    l = l or {}
+    return {k: l.get(k) for k in ("venue", "address", "city", "postal_code", "country", "lat", "lng", "unverified")}
+
 async def get_settings() -> dict:
     doc = await db.settings.find_one({"id": "pricing"}, {"_id": 0, "id": 0}) or {}
     return {**DEFAULT_SETTINGS, **doc}
@@ -2692,6 +2708,8 @@ async def book_date(req: DateBookingReq, user=Depends(get_current_user)):
     await db.users.update_one({"id": req.target_id}, {"$inc": {"escrow": req.coins}})
     await db.date_bookings.insert_one(doc)
     await notify(req.target_id, "date_request", "New date request 📅", f"{user['name']} invited you to {req.venue}, {req.city} · 🪙 {req.coins}. Accept or decline in Dates.", {"booking_id": booking_id}, email=True)
+    await _date_chat_card(user["id"], req.target_id, "booking", booking_id, "invite", f"📅 Date invitation · {req.venue}", req.target_id,
+                          {"when": req.scheduled_at, "coins": req.coins, "options": activities, "location": _loc_card(doc)})
     return {"booking_id": booking_id, "status": "escrow"}
 
 def _decline_reason(r: Optional[str]) -> Optional[str]:
@@ -2717,15 +2735,18 @@ async def respond_date(bid: str, accept: bool, selected_activity: Optional[str] 
                 raise HTTPException(400, "SELECT_ACTIVITY")
             await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "accepted", "accepted_at": now, "selected_activity": chosen}})
             await notify(b["from_id"], "date_accepted", "Date accepted 💃", f"{user['name']} accepted your date at {b['venue']} and chose: {chosen}.", {"booking_id": bid}, email=True)
+            await _date_chat_card(user["id"], b["from_id"], "booking", bid, "accepted", f"✅ Date accepted · {chosen}", data={"option": chosen})
             return {"status": "accepted", "selected_activity": chosen}
         await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "accepted", "accepted_at": now}})
         await notify(b["from_id"], "date_accepted", "Date accepted 💃", f"{user['name']} accepted your date at {b['venue']}.", {"booking_id": bid}, email=True)
+        await _date_chat_card(user["id"], b["from_id"], "booking", bid, "accepted", "✅ Date accepted")
         return {"status": "accepted"}
     await db.users.update_one({"id": b["from_id"]}, {"$inc": {"coins": b["coins"]}})
     await db.users.update_one({"id": user["id"]}, {"$inc": {"escrow": -b["coins"]}})
     reason = _decline_reason(reason)
     await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "declined", "declined_at": now, "decline_reason": reason}})
     await notify(b["from_id"], "date_declined", "Date declined", f"{user['name']} declined your date at {b['venue']}. 🪙 {b['coins']} refunded." + _reason_line(reason), {"booking_id": bid}, email=True)
+    await _date_chat_card(user["id"], b["from_id"], "booking", bid, "declined", "❌ Date declined", data={"reason": reason, "refunded": b["coins"]})
     return {"status": "declined", "refunded": b["coins"]}
 
 INVITE_ACTIVE = ["INVITATION_SENT", "DATE_ACTIVITY_SELECTED", "LOCATION_PROPOSED", "TAXI_REQUESTED", "PICKUP_ADDRESS_PENDING",
@@ -4109,6 +4130,9 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
                  {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
     await notify(user["id"], "vs_submitted", "Request sent 📨",
                  f"Your date request on {req.date} · {req.start}–{req.end} is pending confirmation.", {"booking_id": bid})
+    await _date_chat_card(user["id"], vip_id, "vip", bid, "invite", "👑 VIP date request", vip_id,
+                          {"when": f"{req.date}T{req.start}:00", "end": req.end, "coins": int(req.coins), "place": req.place,
+                           "location": _loc_card(doc.get("location")) if req.place != "own" else {}})
     return {"booking_id": bid, "status": "pending"}
 
 @api.post("/vip/schedule/bookings/{bid}/confirm")
@@ -4125,6 +4149,7 @@ async def vs_confirm(bid: str, user=Depends(get_current_user)):
     await notify(b["requester_id"], "vs_confirmed", "Date confirmed 💃",
                  f"{user['name']} confirmed your date on {b['date']} · {b['start']}–{b['end']}.",
                  {"booking_id": bid}, email=True)
+    await _date_chat_card(user["id"], b["requester_id"], "vip", bid, "accepted", "✅ VIP date confirmed", data={"when": f"{b['date']}T{b['start']}:00", "end": b["end"]})
     return {"status": "confirmed"}
 
 async def _vs_release(b: dict, actor_name: str, reason: str):
@@ -4150,6 +4175,7 @@ async def vs_decline(bid: str, reason: Optional[str] = None, user=Depends(get_cu
     await notify(b["requester_id"], "vs_declined", "Date declined",
                  f"{user['name']} declined your date on {b['date']} · {b['start']}–{b['end']}. 🪙 {b.get('coins', 0)} refunded." + _reason_line(reason),
                  {"booking_id": bid}, email=True)
+    await _date_chat_card(user["id"], b["requester_id"], "vip", bid, "declined", "❌ VIP date declined", data={"reason": reason, "refunded": b.get("coins", 0)})
     return {"status": "declined", "refunded": b.get("coins", 0)}
 
 # ---- Taxi for VIP calendar bookings: VIP requests, requester pays (held in escrow with the date coins) ----
@@ -5305,6 +5331,7 @@ def _serialize(d, viewer_id, other_mini):
             "location": loc, "transportation": trans, "report": bool(d.get("report")) and (d["report"].get("status") or "open") == "open",
             "report_info": _report_view(d.get("report"), viewer_id),
             "verification": (d.get("verification") or {}).get("status"), "windows": windows,
+            "decline_reason": d.get("decline_reason"), "declined_by_me": d.get("declined_by") == viewer_id,
             "server_now": _iso(), "created_at": d.get("created_at")}
 
 class InviteCreateReq(BaseModel):
@@ -5506,6 +5533,8 @@ async def create_invite(req: InviteCreateReq, user=Depends(get_current_user)):
                  f"{user['name']} invited you on a date ({proposed_start[:16].replace('T', ' ')}) with {len(options)} option(s). Choose one to confirm, or reject.",
                  {"date_id": did}, email=True, link=DATES_LINK, cta="View Invitation",
                  sms=True, sms_body=f"GiftsDates: {user['name']} invited you on a date with {len(options)} options. Choose one to confirm, or reject:")
+    await _date_chat_card(user["id"], req.recipient_id, "invite", did, "invite", "💌 Date invitation", req.recipient_id,
+                          {"when": proposed_start, "coins": req.coins, "options": [{"id": o["idea_id"], "name": o["name"]} for o in options]})
     return {"id": did, "status": "INVITATION_SENT"}
 
 async def _get_party(did, uid, role=None):
@@ -5527,6 +5556,7 @@ async def invite_choose(did: str, req: ChooseIdeaReq, user=Depends(get_current_u
     await notify(d["inviter_id"], "date_accepted", "Your date invitation was accepted",
                  f"{user['name']} chose: {opt['name']}. Now propose a meeting location.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date",
                  sms=True, sms_body=f"GiftsDates: {user['name']} accepted your date and chose {opt['name']}. Open the app to confirm & propose a location:")
+    await _date_chat_card(user["id"], d["inviter_id"], "invite", did, "accepted", f"✅ Invitation accepted · {opt['name']}", data={"option": opt["name"]})
     return {"ok": True, "status": "DATE_ACTIVITY_SELECTED"}
 
 @api.post("/invites/{did}/location")
@@ -5548,6 +5578,8 @@ async def invite_location(did: str, req: InviteLocationReq, user=Depends(get_cur
     await notify(d["recipient_id"], "date_location", "A meeting location has been proposed",
                  f"{user['name']} proposed {req.venue}. Confirm it or request a taxi.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date",
                  sms=True, sms_body=f"GiftsDates: {user['name']} proposed {req.venue}. Open the app to confirm the date or request a taxi:")
+    await _date_chat_card(user["id"], d["recipient_id"], "invite", did, "location", f"📍 Meeting place · {loc['venue']}", d["recipient_id"],
+                          {"when": loc["scheduled_start"], "location": _loc_card(loc)})
     return {"ok": True, "status": "LOCATION_PROPOSED"}
 
 @api.post("/invites/{did}/location/confirm")
@@ -5557,6 +5589,7 @@ async def invite_location_confirm(did: str, user=Depends(get_current_user)):
     await _log_status(did, "DATE_CONFIRMED", user["id"])
     for uid in (d["inviter_id"], d["recipient_id"]):
         await notify(uid, "date_accepted", "Your date is confirmed", "The meeting location was confirmed. See details in Dates.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date")
+    await _date_chat_card(user["id"], d["inviter_id"], "invite", did, "confirmed", "✅ Meeting place confirmed — date confirmed")
     return {"ok": True, "status": "DATE_CONFIRMED"}
 
 @api.post("/invites/{did}/location/reject")
@@ -5575,6 +5608,7 @@ async def invite_location_reject(did: str, user=Depends(get_current_user)):
     await _log_status(did, "CANCELLED", user["id"])
     await notify(d["inviter_id"], "date_declined", "Your date location was rejected",
                  f"{user['name']} rejected the proposed location. All coins were refunded to you.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Details")
+    await _date_chat_card(user["id"], d["inviter_id"], "invite", did, "declined", "❌ Meeting place rejected — coins refunded", data={"reason": "Meeting place rejected"})
     return {"ok": True, "status": "CANCELLED"}
 
 
@@ -5718,6 +5752,7 @@ async def invite_cancel(did: str, reason: Optional[str] = None, user=Depends(get
     reason = _decline_reason(reason)
     if reason: await db.dates.update_one({"id": did}, {"$set": {"decline_reason": reason, "declined_by": user["id"]}})
     await notify(other, "date_declined", "Your date has been cancelled", "The other person cancelled the date. Any applicable refund was processed." + _reason_line(reason), {"date_id": did}, email=True, link=DATES_LINK, cta="View Details")
+    await _date_chat_card(user["id"], other, "invite", did, "declined", "❌ Date declined" if d["status"] == "INVITATION_SENT" else "❌ Date cancelled", data={"reason": reason})
     return {"ok": True, "status": "CANCELLED"}
 
 @api.post("/invites/{did}/report")

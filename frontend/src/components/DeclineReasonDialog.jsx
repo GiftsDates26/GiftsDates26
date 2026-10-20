@@ -45,3 +45,13 @@ export default function DeclineReasonDialog({ open, onClose, onConfirm, warning,
     </Dialog>
   );
 }
+
+export function DeclineNote({ reason, testid }) {
+  const { lang } = useApp();
+  if (!reason) return null;
+  return (
+    <div className="mt-1.5 inline-flex items-start gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-100" data-testid={testid}>
+      <X size={12} className="mt-0.5 shrink-0 text-rose-300" /><span><b className="text-rose-200">{t("dr_reason_label", lang)}:</b> “{reason}”</span>
+    </div>
+  );
+}

@@ -11,6 +11,7 @@ import { Switch } from "../components/ui/switch";
 import { LANGUAGES } from "../lib/i18n";
 import { toast } from "sonner";
 import GiftModal from "../components/GiftModal";
+import DateChatCard from "../components/DateChatCard";
 import { fileUrl } from "../lib/api";
 import { presence, PresenceDot } from "../lib/presence";
 
@@ -143,6 +144,7 @@ export default function Chats() {
             {msgs.map(m => (
               <div key={m.id} className={`flex items-end gap-2 ${m.from_id === user.id ? "justify-end" : "justify-start"}`}>
                 {m.from_id !== user.id && <Avatar u={partner} size="w-7 h-7" testid={`chat-msg-avatar-${m.id}`} onClick={() => nav(`/profile/${partner.id}`)} />}
+                {m.type === "date_card" ? <div data-testid={`chat-message-${m.id}`}><DateChatCard m={m} onDone={reload} /></div> :
                 <div data-testid={`chat-message-${m.id}`} className={`max-w-[70%] ${m.type === "image" ? "p-1 rounded-2xl bg-white/5" : "px-3 py-2 rounded-2xl"} text-sm ${m.type === "image" ? "" : m.type === "gift" ? "border border-amber-400/40 bg-amber-500/10 text-amber-100" : m.from_id===user.id ? "rose-btn text-white" : "bg-white/10 text-slate-100"}`}>
                   {m.date_id && <div className="text-[10px] opacity-70 mb-0.5 flex items-center gap-1" data-testid={`chat-from-date-${m.id}`}><CalendarHeart size={10} />{t("chat_from_date", lang)}</div>}
                   {m.type === "gift" ? (
@@ -168,7 +170,7 @@ export default function Chats() {
                       </button>
                     </div>
                   ) : <span translate="no">{m.text}</span>}
-                </div>
+                </div>}
               </div>
             ))}
             <div ref={endRef}/>

@@ -17,7 +17,7 @@ import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock, ReportStatusNote } from "../components/DateReportForm";
 import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
-import DeclineReasonDialog from "../components/DeclineReasonDialog";
+import DeclineReasonDialog, { DeclineNote } from "../components/DeclineReasonDialog";
 import VerifiedAddressForm, { addressReady, addrErrKey, addrPayload, UnverifiedNote } from "../components/VerifiedAddressForm";
 import DatesToday from "../components/DatesToday";
 import DatesEarnings from "../components/DatesEarnings";
@@ -199,6 +199,7 @@ function DateCard({ d, reload }) {
           </div>
           {["DATE_CONFIRMED", "DATE_COMPLETED_PENDING_VERIFICATION"].includes(d.status) && d.location?.scheduled_start && <div className="mt-1.5"><CountdownBadge to={d.location.scheduled_start} testid={`date-countdown-${d.id}`} /></div>}
           <p className="text-xs text-slate-400 mt-0.5" data-testid={`date-next-${d.id}`}>➜ {stepText()}</p>
+          <DeclineNote reason={d.decline_reason} testid={`date-decline-reason-${d.id}`} />
           {d.chosen_idea && <div className="text-sm text-rose-200 mt-1"><CalendarHeart size={13} className="inline me-1" />{d.chosen_idea.name}</div>}
           {!d.chosen_idea && d.options && <div className="text-xs text-slate-300 mt-1">{tr("id_options")}: {d.options.map(o => o.name).join(" · ")}</div>}
           {d.location?.venue && <div className="text-xs text-slate-400 mt-1"><MapPin size={12} className="inline me-1" />{[d.location.venue, d.location.address, d.location.city].filter(Boolean).join(", ")} <MapsLink loc={d.location} testid={`date-maps-${d.id}`} /><UnverifiedNote show={d.location?.unverified} testid={`date-loc-unverified-${d.id}`} /></div>}
