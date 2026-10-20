@@ -17,13 +17,18 @@ const fmtDay = (d) => { try { return fromKey(d).toLocaleDateString(undefined, { 
 const toApi = (rs) => rs.map((r) => ({ start: r.from, end: r.to }));
 const ERR = { VIP_REQUIRED: "vs_vip_required", NO_WEEKDAYS: "vs_pick_day_err", NOTHING_TO_ADD: "vs_pick_day_err", HAS_BOOKINGS: "vs_has_bookings", TIME_OVERLAP: "vs_overlap_err" };
 
-function PublishedList({ blocks, onRemove, lang }) {
+function PublishedList({ blocks, onRemove, onRemoveAll, lang }) {
   const byDate = {};
   blocks.forEach((b) => { (byDate[b.date] = byDate[b.date] || []).push(b); });
   const dates = Object.keys(byDate).sort();
   return (
     <div>
-      <div className="text-xs text-slate-400 mb-2">{t("vs_published", lang)} · <b className="text-white" data-testid="vs-avail-count">{blocks.length}</b></div>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-xs text-slate-400">{t("vs_published", lang)} · <b className="text-white" data-testid="vs-avail-count">{blocks.length}</b></div>
+        {blocks.length > 0 && <button type="button" onClick={onRemoveAll} data-testid="vs-avail-delete-all"
+          className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-xs text-rose-200 hover:bg-rose-500/20 transition-colors">
+          <Trash2 size={12} />{t("vs_delete_all", lang)}</button>}
+      </div>
       {dates.length === 0 ? <div className="text-xs text-slate-500">{t("vs_none_yet", lang)}</div> : (
         <div className="space-y-2" data-testid="vs-avail-list">
           {dates.map((d) => (
@@ -74,6 +79,15 @@ export default function VipAvailabilityEditor({ blocks = [], onChanged }) {
     try { await api.delete(`/vip/schedule/availability/${id}`); toast.success(t("vs_removed", lang)); onChanged?.(); }
     catch (e) { const d = e.response?.data?.detail || ""; toast.error(ERR[d] ? t(ERR[d], lang) : d || "Error"); }
   };
+  const removeAll = async () => {
+    if (!window.confirm(t("vs_delete_all_confirm", lang))) return;
+    try {
+      const r = await api.delete("/vip/schedule/availability");
+      toast.success(t("vs_deleted_all", lang).replace("{n}", r.data.deleted));
+      if (r.data.kept) toast.warning(t("vs_kept_booked", lang).replace("{n}", r.data.kept));
+      onChanged?.();
+    } catch (e) { toast.error(e.response?.data?.detail || "Error"); }
+  };
   const btn = (onClick, label, testid) => (
     <Button data-testid={testid} onClick={onClick} disabled={saving} className="rose-btn text-white border-0 w-full mt-4 h-10">
       {saving ? <Loader2 size={15} className="animate-spin" /> : <><Plus size={15} className="me-1" /> {label}</>}
@@ -115,7 +129,7 @@ export default function VipAvailabilityEditor({ blocks = [], onChanged }) {
           {btn(addWeekly, t("vs_add_weekly", lang), "vs-avail-add-weekly")}
         </TabsContent>
       </Tabs>
-      <PublishedList blocks={blocks} onRemove={remove} lang={lang} />
+      <PublishedList blocks={blocks} onRemove={remove} onRemoveAll={removeAll} lang={lang} />
     </div>
   );
 }
