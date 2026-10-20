@@ -3984,10 +3984,11 @@ async def vs_add_availability(req: VipAvailReq, user=Depends(get_current_user)):
     return _vs_clean(doc)
 
 @api.delete("/vip/schedule/availability")
-async def vs_del_all_availability(user=Depends(get_current_user)):
-    """Remove every time window of the VIP, except days that still have active bookings."""
+async def vs_del_all_availability(date: Optional[str] = None, user=Depends(get_current_user)):
+    """Remove every time window of the VIP (or of one day), except days that still have active bookings."""
     busy = await db.vip_sched.distinct("date", {"vip_id": user["id"], "status": {"$in": VIP_SCHED_ACTIVE}})
-    res = await db.vip_avail.delete_many({"vip_id": user["id"], "date": {"$nin": busy}})
+    if date and date in busy: raise HTTPException(400, "HAS_BOOKINGS")
+    res = await db.vip_avail.delete_many({"vip_id": user["id"], "date": date if date else {"$nin": busy}})
     kept = await db.vip_avail.count_documents({"vip_id": user["id"]})
     return {"deleted": res.deleted_count, "kept": kept}
 
