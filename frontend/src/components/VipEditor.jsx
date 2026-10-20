@@ -423,12 +423,12 @@ export default function VipEditor() {
           <Button
             data-testid="vip-open-bookings"
             type="button"
-            onClick={() => nav("/vip-bookings")}
+            onClick={() => nav("/vip-bookings?tab=availability")}
             size="sm"
             className="bg-rose-500 hover:bg-rose-600 text-white h-8 px-3 gap-1.5"
           >
             <CalendarClock size={15} />
-            {t("vip_manage_bookings", lang)}
+            {t("vb_availability", lang)}
             <ArrowRight size={14} />
           </Button>
         </div>

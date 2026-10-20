@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -170,6 +170,8 @@ function Empty({ icon: Icon, text }) {
 export default function VipBookings() {
   const { refreshUser, lang } = useApp();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab"));
   const [sched, setSched] = useState(null);
   const [mine, setMine] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -268,7 +270,7 @@ export default function VipBookings() {
 
       <TodayStrip items={todayItems} />
 
-      <Tabs defaultValue={tabs[0].v} className="w-full">
+      <Tabs value={tabs.some((x) => x.v === tab) ? tab : tabs[0].v} onValueChange={setTab} className="w-full">
         <div className="sticky top-16 z-20 -mx-4 px-4 py-2 bg-[#0D0B12]/85 backdrop-blur-xl border-b border-white/10">
           <TabsList className="bg-transparent p-0 h-auto w-full justify-start gap-1 overflow-x-auto flex-nowrap" data-testid="vs-tabs">
             {tabs.map(({ v, label, icon: Icon, n, hot }) => (
