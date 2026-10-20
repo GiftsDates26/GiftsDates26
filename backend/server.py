@@ -2694,8 +2694,15 @@ async def book_date(req: DateBookingReq, user=Depends(get_current_user)):
     await notify(req.target_id, "date_request", "New date request 📅", f"{user['name']} invited you to {req.venue}, {req.city} · 🪙 {req.coins}. Accept or decline in Dates.", {"booking_id": booking_id}, email=True)
     return {"booking_id": booking_id, "status": "escrow"}
 
+def _decline_reason(r: Optional[str]) -> Optional[str]:
+    r = (r or "").strip()[:300]
+    return r or None
+
+def _reason_line(r: Optional[str]) -> str:
+    return f' Reason: "{r}"' if r else ""
+
 @api.post("/dates/respond/{bid}")
-async def respond_date(bid: str, accept: bool, selected_activity: Optional[str] = None, user=Depends(get_current_user)):
+async def respond_date(bid: str, accept: bool, selected_activity: Optional[str] = None, reason: Optional[str] = None, user=Depends(get_current_user)):
     b = await db.date_bookings.find_one({"id": bid})
     if not b: raise HTTPException(404, "Not found")
     if b["to_id"] != user["id"]: raise HTTPException(403, "Only recipient can respond")
@@ -2716,8 +2723,9 @@ async def respond_date(bid: str, accept: bool, selected_activity: Optional[str] 
         return {"status": "accepted"}
     await db.users.update_one({"id": b["from_id"]}, {"$inc": {"coins": b["coins"]}})
     await db.users.update_one({"id": user["id"]}, {"$inc": {"escrow": -b["coins"]}})
-    await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "declined", "declined_at": now}})
-    await notify(b["from_id"], "date_declined", "Date declined", f"{user['name']} declined your date at {b['venue']}. 🪙 {b['coins']} refunded.", {"booking_id": bid}, email=True)
+    reason = _decline_reason(reason)
+    await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "declined", "declined_at": now, "decline_reason": reason}})
+    await notify(b["from_id"], "date_declined", "Date declined", f"{user['name']} declined your date at {b['venue']}. 🪙 {b['coins']} refunded." + _reason_line(reason), {"booking_id": bid}, email=True)
     return {"status": "declined", "refunded": b["coins"]}
 
 INVITE_ACTIVE = ["INVITATION_SENT", "DATE_ACTIVITY_SELECTED", "LOCATION_PROPOSED", "TAXI_REQUESTED", "PICKUP_ADDRESS_PENDING",
@@ -4127,7 +4135,7 @@ async def _vs_release(b: dict, actor_name: str, reason: str):
         await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"escrow": -coins}})
 
 @api.post("/vip/schedule/bookings/{bid}/decline")
-async def vs_decline(bid: str, user=Depends(get_current_user)):
+async def vs_decline(bid: str, reason: Optional[str] = None, user=Depends(get_current_user)):
     b = await db.vip_sched.find_one({"id": bid})
     if not b:
         raise HTTPException(404, "Not found")
@@ -4137,9 +4145,10 @@ async def vs_decline(bid: str, user=Depends(get_current_user)):
         raise HTTPException(400, "CANNOT_DECLINE")
     now = datetime.now(timezone.utc).isoformat()
     await _vs_release(b, user["name"], "declined")
-    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "declined", "declined_at": now}})
+    reason = _decline_reason(reason)
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "declined", "declined_at": now, "decline_reason": reason}})
     await notify(b["requester_id"], "vs_declined", "Date declined",
-                 f"{user['name']} declined your date on {b['date']} · {b['start']}–{b['end']}. 🪙 {b.get('coins', 0)} refunded.",
+                 f"{user['name']} declined your date on {b['date']} · {b['start']}–{b['end']}. 🪙 {b.get('coins', 0)} refunded." + _reason_line(reason),
                  {"booking_id": bid}, email=True)
     return {"status": "declined", "refunded": b.get("coins", 0)}
 
@@ -5642,7 +5651,7 @@ async def invite_transport_refuse(did: str, user=Depends(get_current_user)):
     return {"ok": True, "status": "CANCELLED_TRANSPORTATION"}
 
 @api.post("/invites/{did}/cancel")
-async def invite_cancel(did: str, user=Depends(get_current_user)):
+async def invite_cancel(did: str, reason: Optional[str] = None, user=Depends(get_current_user)):
     d = await _get_party(did, user["id"])
     if d["status"] in ("COMPLETED", "COMPLETED_AUTO", "CANCELLED", "CANCELLED_TRANSPORTATION", "REFUNDED"): raise HTTPException(400, "Already closed")
     if d["status"] in ("REPORTED", "UNDER_ADMIN_REVIEW") or (d.get("report") and (d["report"].get("status") or "open") == "open"):
@@ -5663,7 +5672,9 @@ async def invite_cancel(did: str, user=Depends(get_current_user)):
         await _refund(d, "split", "CANCELLED")
     await _log_status(did, "CANCELLED", user["id"])
     other = d["recipient_id"] if user["id"] == d["inviter_id"] else d["inviter_id"]
-    await notify(other, "date_declined", "Your date has been cancelled", "The other person cancelled the date. Any applicable refund was processed.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Details")
+    reason = _decline_reason(reason)
+    if reason: await db.dates.update_one({"id": did}, {"$set": {"decline_reason": reason, "declined_by": user["id"]}})
+    await notify(other, "date_declined", "Your date has been cancelled", "The other person cancelled the date. Any applicable refund was processed." + _reason_line(reason), {"date_id": did}, email=True, link=DATES_LINK, cta="View Details")
     return {"ok": True, "status": "CANCELLED"}
 
 @api.post("/invites/{did}/report")

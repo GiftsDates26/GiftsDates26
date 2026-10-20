@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import DeclineReasonDialog from "./DeclineReasonDialog";
 import { api, fileUrl } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
@@ -42,6 +43,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   const [taxiFor, setTaxiFor] = useState(null); // { id, coins }
   const [meetFor, setMeetFor] = useState(null);
   const [reportFor, setReportFor] = useState(null);
+  const [declineFor, setDeclineFor] = useState(null);
   const [meetLoc, setMeetLoc] = useState({});
   const [chosenActivity, setChosenActivity] = useState({}); // { bookingId: activityText }
   const inputRef = useRef();
@@ -68,7 +70,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
     finally { setBusyId(null); }
   };
 
-  const respond = async (id, accept, activities) => {
+  const respond = async (id, accept, activities, reason) => {
     if (accept && activities && activities.length) {
       const chosen = chosenActivity[id];
       if (!chosen) { toast.error(t("select_activity_err", lang)); return; }
@@ -79,7 +81,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
       return;
     }
     setBusyId(id);
-    try { await api.post(`/dates/respond/${id}?accept=${accept}`); await refreshUser(); await load(); toast.success(t(accept ? "date_accepted_toast" : "date_declined_toast", lang)); }
+    try { await api.post(`/dates/respond/${id}?accept=${accept}${reason ? `&reason=${encodeURIComponent(reason)}` : ""}`); await refreshUser(); await load(); toast.success(t(accept ? "date_accepted_toast" : "date_declined_toast", lang)); }
     catch (e) { toast.error(e.response?.data?.detail || t("failed", lang)); }
     finally { setBusyId(null); }
   };
@@ -259,7 +261,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
         {isIncoming && b.status === "escrow" && (
           <>
             <Button data-testid={`date-accept-btn-${b.id}`} disabled={busyId===b.id} onClick={() => respond(b.id, true, b.activities)} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0"><Check size={14} className="me-1"/> {t("accept", lang)}</Button>
-            <Button data-testid={`date-decline-btn-${b.id}`} disabled={busyId===b.id} onClick={() => respond(b.id, false)} variant="outline" className="bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1"/> {t("decline", lang)}</Button>
+            <Button data-testid={`date-decline-btn-${b.id}`} disabled={busyId===b.id} onClick={() => setDeclineFor(b.id)} variant="outline" className="bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1"/> {t("decline", lang)}</Button>
           </>
         )}
         {isIncoming && !underReview && (b.status === "accepted" || (b.status === "confirmed" && !b.photo_url)) && (() => {
@@ -308,6 +310,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
     <>
       <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.total || 0} taxi={cancelFor?.taxi || 0}
         byRequester={!cancelFor?.isRecipient} onConfirm={() => { const b = cancelFor.b; setCancelFor(null); doCancel(b); }} />
+      <DeclineReasonDialog open={!!declineFor} onClose={() => setDeclineFor(null)} onConfirm={(r) => respond(declineFor, false, null, r)} testid="booking-decline-dialog" />
       <input ref={inputRef} data-testid="photo-verification-upload-input" type="file" accept="image/*" onChange={handleFile} className="hidden"/>
       {all.length === 0 && mode === "vip" && <EmptyLine text={t("none", lang)} />}
       {shown.length > 0 && (

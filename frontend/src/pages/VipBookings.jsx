@@ -18,6 +18,7 @@ import ArrivedButton from "../components/ArrivedButton";
 import TodayStrip from "../components/TodayStrip";
 import EarningsChart from "../components/EarningsChart";
 import NoShowReport, { NoShowCase } from "../components/NoShowReport";
+import DeclineReasonDialog from "../components/DeclineReasonDialog";
 import RunningLateButton from "../components/RunningLateButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
@@ -197,7 +198,9 @@ export default function VipBookings() {
     try { await fn(); await load(); await refreshUser(); } finally { setBusyId(null); }
   };
   const confirm = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/confirm`); toast.success(t("vb_confirmed_toast", lang)); }, id);
-  const decline = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/decline`); toast.success(t("vb_declined_toast", lang)); }, id);
+  const [declineFor, setDeclineFor] = useState(null);
+  const decline = (id) => setDeclineFor(id);
+  const doDecline = (id, reason) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/decline`, null, { params: { reason } }); toast.success(t("vb_declined_toast", lang)); }, id);
   const cancel = (b, who) => setCancelFor({ b, who });
   const doCancel = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/cancel`); toast.success(t("vb_cancelled_toast", lang)); }, id);
 
@@ -288,6 +291,7 @@ export default function VipBookings() {
       </Tabs>
 
 
+      <DeclineReasonDialog open={!!declineFor} onClose={() => setDeclineFor(null)} onConfirm={(r) => doDecline(declineFor, r)} testid="vs-decline-dialog" />
       <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.b.coins || 0} taxi={cancelFor?.b.taxi_coins || 0}
         byRequester={cancelFor?.who === "outgoing"} onConfirm={() => { const id = cancelFor.b.id; setCancelFor(null); doCancel(id); }} />
       {reschedule && (

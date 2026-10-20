@@ -17,6 +17,7 @@ import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock, ReportStatusNote } from "../components/DateReportForm";
 import { DATE_TABS, tabOf, countByTab } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
+import DeclineReasonDialog from "../components/DeclineReasonDialog";
 import VerifiedAddressForm, { addressReady, addrErrKey, addrPayload, UnverifiedNote } from "../components/VerifiedAddressForm";
 import DatesToday from "../components/DatesToday";
 import DatesEarnings from "../components/DatesEarnings";
@@ -143,6 +144,8 @@ function DateCard({ d, reload }) {
 
   const act = async (fn) => { setBusy(true); try { await fn(); await reload(); } catch (e) { const dt = e.response?.data?.detail; toast.error(addrErrKey(dt) ? tr(addrErrKey(dt)) : dt || tr("failed")); } finally { setBusy(false); } };
   const post = (path, body) => api.post(`/invites/${d.id}${path}`, body);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const whenTxt = (d.location?.scheduled_start || d.proposed_start) ? new Date(d.location?.scheduled_start || d.proposed_start).toLocaleString() : "";
   const cancelLocked = !!d.location?.scheduled_start && Date.now() >= new Date(d.location.scheduled_start).getTime() - 30 * 60000;
 
   const refuseSplit = () => {
@@ -217,7 +220,9 @@ function DateCard({ d, reload }) {
                 className={`text-xs px-3 py-1.5 rounded-full border ${choose === o.idea_id ? "bg-rose-500/20 border-rose-500/50 text-rose-200" : "bg-white/5 border-white/10 text-slate-300"}`}>{o.name}</button>))}</div>
             <div className="flex flex-wrap gap-2 items-center">
               <Button data-testid={`date-choose-confirm-${d.id}`} disabled={busy || !choose} onClick={() => act(() => post("/choose", { idea_id: choose }))} className="rose-btn text-white border-0 h-9"><Check size={14} className="me-1" />{tr("id_confirm_choice")}</Button>
-              <Button data-testid={`date-reject-${d.id}`} disabled={busy} onClick={() => { const when = (d.location?.scheduled_start || d.proposed_start) ? new Date(d.location?.scheduled_start || d.proposed_start).toLocaleString() : ""; if (window.confirm(tr("id_reject_confirm_lock").replace("{when}", when))) act(() => post("/cancel")); }} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1" />{tr("id_reject")}</Button>
+              <Button data-testid={`date-reject-${d.id}`} disabled={busy} onClick={() => setDeclineOpen(true)} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1" />{tr("id_reject")}</Button>
+              <DeclineReasonDialog open={declineOpen} onClose={() => setDeclineOpen(false)} warning={tr("id_reject_confirm_lock").replace("{when}", whenTxt)}
+                onConfirm={(r) => act(() => post(`/cancel?reason=${encodeURIComponent(r)}`))} testid={`date-decline-dialog-${d.id}`} />
             </div>
             <div className="flex items-start gap-1.5 text-[11px] text-amber-200/90 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2" data-testid={`date-reject-warning-${d.id}`}>
               <ShieldAlert size={13} className="mt-0.5 shrink-0 text-amber-300" />
