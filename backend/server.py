@@ -3974,6 +3974,8 @@ async def vs_add_availability(req: VipAvailReq, user=Depends(get_current_user)):
     slot_len = max(15, min(240, int(req.slot_len or 60)))
     if span < slot_len:
         raise HTTPException(400, "WINDOW_TOO_SHORT")
+    if await _vs_overlaps(user["id"], req.date, s, span):
+        raise HTTPException(400, "TIME_OVERLAP")
     doc = {"id": str(uuid.uuid4()), "vip_id": user["id"], "date": req.date,
            "start": _min_to_hm(s), "end": _min_to_hm(e), "slot_len": slot_len,
            "tz": (req.tz or user.get("timezone") or "UTC"),
@@ -4482,8 +4484,7 @@ async def vs_add_recurring(req: VipRecurringReq, user=Depends(get_current_user))
         if d.weekday() not in wds:
             continue
         dk = d.strftime("%Y-%m-%d")
-        exists = await db.vip_avail.find_one({"vip_id": user["id"], "date": dk, "start": _min_to_hm(s), "end": _min_to_hm(e)})
-        if exists:
+        if await _vs_overlaps(user["id"], dk, s, e - s if e > s else e + 1440 - s):
             continue
         doc = {"id": str(uuid.uuid4()), "vip_id": user["id"], "date": dk,
                "start": _min_to_hm(s), "end": _min_to_hm(e), "slot_len": slot_len, "tz": tz,
@@ -4509,10 +4510,21 @@ class VipWeeklyAvailReq(BaseModel):
     slot_len: int = 60
     tz: Optional[str] = None
 
+async def _vs_overlaps(vip_id: str, dk: str, a: int, span: int) -> bool:
+    """True if [a, a+span) on day dk overlaps an existing window (incl. overnight windows from the day before/after)."""
+    d0 = datetime.strptime(dk, "%Y-%m-%d")
+    near = {(d0 + timedelta(days=k)).strftime("%Y-%m-%d"): k * 1440 for k in (-1, 0, 1)}
+    async for x in db.vip_avail.find({"vip_id": vip_id, "date": {"$in": list(near)}}, {"_id": 0, "date": 1, "start": 1, "end": 1}):
+        xs, xe = _hm_to_min(x["start"]), _hm_to_min(x["end"])
+        xa = xs + near[x["date"]]
+        xz = xa + (xe - xs if xe > xs else xe + 1440 - xs)
+        if a < xz and xa < a + span: return True
+    return False
+
 async def _vs_insert_blocks(user, items, slot_len, tz, recurring=False):
     """items: [(date, start, end)]; skips past days, empty/too-short windows and duplicates."""
     slot_len = max(15, min(240, int(slot_len or 60)))
-    today, created = _vs_today(), []
+    today, created, overlaps = _vs_today(), [], 0
     for dk, st, en in items:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dk) or dk < today:
             continue
@@ -4520,13 +4532,14 @@ async def _vs_insert_blocks(user, items, slot_len, tz, recurring=False):
         if a == z or ((z - a) if z > a else z + 1440 - a) < slot_len:
             continue
         st, en = _min_to_hm(a), _min_to_hm(z)
-        if await db.vip_avail.find_one({"vip_id": user["id"], "date": dk, "start": st, "end": en}):
+        if await _vs_overlaps(user["id"], dk, a, (z - a) if z > a else z + 1440 - a):
+            overlaps += 1  # same or overlapping time already on that day
             continue
         doc = {"id": str(uuid.uuid4()), "vip_id": user["id"], "date": dk, "start": st, "end": en, "slot_len": slot_len,
                "tz": tz or user.get("timezone") or "UTC", "recurring": recurring, "created_at": datetime.now(timezone.utc).isoformat()}
         await db.vip_avail.insert_one(doc)
         created.append(_vs_clean(doc))
-    return {"created": len(created), "blocks": created}
+    return {"created": len(created), "blocks": created, "skipped_overlap": overlaps}
 
 @api.post("/vip/schedule/availability/bulk")
 async def vs_add_bulk(req: VipBulkAvailReq, user=Depends(get_current_user)):

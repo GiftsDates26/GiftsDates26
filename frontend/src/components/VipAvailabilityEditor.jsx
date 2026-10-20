@@ -15,7 +15,7 @@ import { t } from "../lib/i18n";
 
 const fmtDay = (d) => { try { return fromKey(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }); } catch { return d; } };
 const toApi = (rs) => rs.map((r) => ({ start: r.from, end: r.to }));
-const ERR = { VIP_REQUIRED: "vs_vip_required", NO_WEEKDAYS: "vs_pick_day_err", NOTHING_TO_ADD: "vs_pick_day_err", HAS_BOOKINGS: "vs_has_bookings" };
+const ERR = { VIP_REQUIRED: "vs_vip_required", NO_WEEKDAYS: "vs_pick_day_err", NOTHING_TO_ADD: "vs_pick_day_err", HAS_BOOKINGS: "vs_has_bookings", TIME_OVERLAP: "vs_overlap_err" };
 
 function PublishedList({ blocks, onRemove, lang }) {
   const byDate = {};
@@ -57,12 +57,19 @@ export default function VipAvailabilityEditor({ blocks = [], onChanged }) {
 
   const run = async (fn) => {
     setSaving(true);
-    try { const r = await fn(); toast.success(t("vs_added", lang).replace("{n}", r.data.created)); onChanged?.(); }
+    try {
+      const r = await fn();
+      if (r.data.created || !r.data.skipped_overlap) toast.success(t("vs_added", lang).replace("{n}", r.data.created));
+      if (r.data.skipped_overlap) toast.warning(t("vs_overlap_skipped", lang).replace("{n}", r.data.skipped_overlap));
+      onChanged?.();
+    }
     catch (e) { const d = e.response?.data?.detail || ""; toast.error(ERR[d] ? t(ERR[d], lang) : d || "Error"); }
     finally { setSaving(false); }
   };
-  const addDays = () => days.length ? run(() => api.post("/vip/schedule/availability/bulk", { dates: days.map(toKey), ranges: toApi(ranges), slot_len: slotLen, tz })) : toast.error(t("vs_pick_day_err", lang));
-  const addWeekly = () => run(() => api.post("/vip/schedule/availability/weekly", { weekly: Object.fromEntries(Object.entries(weekly).map(([k, v]) => [k, toApi(v)])), weeks, slot_len: slotLen, tz }));
+  // two ranges in the same form may not cover the same time of day
+  const clash = (rs) => { const iv = toApi(rs).map(({ start, end }) => { const [a, b] = [start, end].map((x) => +x.slice(0, 2) * 60 + +x.slice(3, 5)); return [a, b > a ? b : b + 1440]; }).sort((x, y) => x[0] - y[0]); return iv.some((x, i) => i && x[0] < iv[i - 1][1]); };
+  const addDays = () => clash(ranges) ? toast.error(t("vs_overlap_err", lang)) : days.length ? run(() => api.post("/vip/schedule/availability/bulk", { dates: days.map(toKey), ranges: toApi(ranges), slot_len: slotLen, tz })) : toast.error(t("vs_pick_day_err", lang));
+  const addWeekly = () => Object.values(weekly).some(clash) ? toast.error(t("vs_overlap_err", lang)) : run(() => api.post("/vip/schedule/availability/weekly", { weekly: Object.fromEntries(Object.entries(weekly).map(([k, v]) => [k, toApi(v)])), weeks, slot_len: slotLen, tz }));
   const remove = async (id) => {
     try { await api.delete(`/vip/schedule/availability/${id}`); toast.success(t("vs_removed", lang)); onChanged?.(); }
     catch (e) { const d = e.response?.data?.detail || ""; toast.error(ERR[d] ? t(ERR[d], lang) : d || "Error"); }
