@@ -173,6 +173,10 @@ async def _date_chat_card(from_id: str, to_id: str, kind: str, ref_id: str, even
                                   "data": data or {}, "created_at": now})
     await db.conversations.update_one({"id": cid}, {"$set": {"last_message": text, "last_at": now}})
 
+async def _close_date_cards(ref_id: str):
+    """Hide approve/decline buttons on chat cards once the date moved on."""
+    await db.messages.update_many({"ref_id": ref_id, "type": "date_card", "action_for": {"$ne": None}}, {"$set": {"action_for": None}})
+
 def _loc_card(l: dict) -> dict:
     l = l or {}
     return {k: l.get(k) for k in ("venue", "address", "city", "postal_code", "country", "lat", "lng", "unverified")}
@@ -2735,6 +2739,7 @@ async def respond_date(bid: str, accept: bool, selected_activity: Optional[str] 
                 raise HTTPException(400, "SELECT_ACTIVITY")
             await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "accepted", "accepted_at": now, "selected_activity": chosen}})
             await notify(b["from_id"], "date_accepted", "Date accepted 💃", f"{user['name']} accepted your date at {b['venue']} and chose: {chosen}.", {"booking_id": bid}, email=True)
+            await db.messages.update_many({"ref_id": bid, "type": "date_card", "event": "invite"}, {"$set": {"data.chosen": chosen}})
             await _date_chat_card(user["id"], b["from_id"], "booking", bid, "accepted", f"✅ Date accepted · {chosen}", data={"option": chosen})
             return {"status": "accepted", "selected_activity": chosen}
         await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "accepted", "accepted_at": now}})
@@ -2986,6 +2991,7 @@ async def release_half(bid: str, user=Depends(get_current_user)):
 
 @api.post("/dates/cancel/{bid}")
 async def cancel_date(bid: str, user=Depends(get_current_user)):
+    await _close_date_cards(bid)
     b = await db.date_bookings.find_one({"id": bid})
     if not b: raise HTTPException(404, "Not found")
     if user["id"] not in (b["from_id"], b["to_id"]): raise HTTPException(403, "No access")
@@ -4451,6 +4457,7 @@ async def vs_arrived(bid: str, user=Depends(get_current_user)):
 
 @api.post("/vip/schedule/bookings/{bid}/cancel")
 async def vs_cancel(bid: str, user=Depends(get_current_user)):
+    await _close_date_cards(bid)
     b = await db.vip_sched.find_one({"id": bid})
     if not b:
         raise HTTPException(404, "Not found")
@@ -5240,6 +5247,7 @@ async def _admin_ids():
 async def _log_status(did, status, by):
     await db.dates.update_one({"id": did}, {"$set": {"status": status, "updated_at": _iso()},
                                             "$push": {"status_log": {"status": status, "at": _iso(), "by": by}}})
+    await _close_date_cards(did)
 
 async def _mini(uid):
     u = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1, "name": 1, "photos": 1, "age": 1, "city": 1, "country": 1})
@@ -5556,6 +5564,7 @@ async def invite_choose(did: str, req: ChooseIdeaReq, user=Depends(get_current_u
     await notify(d["inviter_id"], "date_accepted", "Your date invitation was accepted",
                  f"{user['name']} chose: {opt['name']}. Now propose a meeting location.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Date",
                  sms=True, sms_body=f"GiftsDates: {user['name']} accepted your date and chose {opt['name']}. Open the app to confirm & propose a location:")
+    await db.messages.update_many({"ref_id": did, "type": "date_card", "event": "invite"}, {"$set": {"data.chosen": opt["name"]}})
     await _date_chat_card(user["id"], d["inviter_id"], "invite", did, "accepted", f"✅ Invitation accepted · {opt['name']}", data={"option": opt["name"]})
     return {"ok": True, "status": "DATE_ACTIVITY_SELECTED"}
 
@@ -5593,7 +5602,7 @@ async def invite_location_confirm(did: str, user=Depends(get_current_user)):
     return {"ok": True, "status": "DATE_CONFIRMED"}
 
 @api.post("/invites/{did}/location/reject")
-async def invite_location_reject(did: str, user=Depends(get_current_user)):
+async def invite_location_reject(did: str, reason: Optional[str] = None, user=Depends(get_current_user)):
     d = await _get_party(did, user["id"], "recipient")
     if d["status"] != "LOCATION_PROPOSED": raise HTTPException(400, "Nothing to reject")
     # Invited person rejects the proposed location -> full refund back to the inviter
@@ -5608,7 +5617,9 @@ async def invite_location_reject(did: str, user=Depends(get_current_user)):
     await _log_status(did, "CANCELLED", user["id"])
     await notify(d["inviter_id"], "date_declined", "Your date location was rejected",
                  f"{user['name']} rejected the proposed location. All coins were refunded to you.", {"date_id": did}, email=True, link=DATES_LINK, cta="View Details")
-    await _date_chat_card(user["id"], d["inviter_id"], "invite", did, "declined", "❌ Meeting place rejected — coins refunded", data={"reason": "Meeting place rejected"})
+    reason = _decline_reason(reason) or "Meeting place rejected"
+    await db.dates.update_one({"id": did}, {"$set": {"decline_reason": reason, "declined_by": user["id"]}})
+    await _date_chat_card(user["id"], d["inviter_id"], "invite", did, "declined", "❌ Meeting place rejected — coins refunded", data={"reason": reason})
     return {"ok": True, "status": "CANCELLED"}
 
 

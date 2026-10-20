@@ -1,0 +1,32 @@
+{
+  "summary": "Tested the date_card chat messages and showing the decline reason on cards, in the backend (pytest, 8/8 passed) and frontend (Playwright). Backend: date_card messages are created for every event: invite (invite/accepted/location/confirmed/declined), booking (invite/accepted/declined) and vip (invite/accepted/declined). action_for points at the right person, and it is set to null on older cards for the same ref_id. The data payload is correct: options, when, coins, location fields, reason and refunded. /invites/cancelled returns decline_reason and declined_by_me, correct for each side. /dates and /vip/schedule/bookings/mine return decline_reason. Frontend (/chats?c=): cards render with time, address, Google Maps link, coins and option chips. On invite and booking cards Approve stays disabled ('Pick an option') until an option is picked. Picking an option and approving accepts the invite. Decline opens chat-decline-dialog-{id}; Confirm is disabled until a reason is given, and quick or typed reasons are both sent. Approving a location card confirms the date. VIP Approve confirms. After each action the buttons disappear and a new card appears with the reason. Decline reasons show on the Dates 'Cancelled & refused' tab (date-decline-reason, cancelled-date-reason, booking-decline-reason) and on the VIP Bookings cancelled tab (vs-decline-reason). No page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/vip/schedule/bookings/{bid}/cancel, /api/dates/cancel/{bid}, /api/invites/{did}/taxi/request, invite expiry/admin flows", "issue": "These state changes post no date_card and do not clear action_for on earlier cards. Approve/Decline buttons stay on cards whose date is no longer actionable. Example: the requester cancels a pending VIP request, and the VIP still sees Approve, which then fails with NOT_PENDING. Example: the recipient requests a taxi, and the location card still shows Approve, which fails with 'Nothing to confirm'."},
+      {"endpoint": "/api/invites/{did}/location/reject", "issue": "The chat card carries reason 'Meeting place rejected', but decline_reason/declined_by are not saved on the date doc. The inviter's Cancelled & refused card shows no reason for location rejections. There is also no reason dialog for location Decline in chat (declineNeedsReason applies only to event=='invite')."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Chats date card", "issues": ["After an option is accepted, the original invite card still lists all 3 chips with none highlighted as chosen. The chosen option appears only on the next 'accepted' card. Minor."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_date_chat_cards.py", "/app/backend/tests/seed_iter32_ui.py", "/app/test_reports/pytest/pytest_iter32.xml"],
+  "action_items": [
+    "Optional: call _date_chat_card (or at least db.messages.update_many({ref_id, type:'date_card'}, {$set:{action_for:None}})) in vs_cancel, dates cancel, invite taxi request/expiry/admin-cancel paths so stale Approve buttons disappear",
+    "Optional: store decline_reason='Meeting place rejected' (and declined_by) in invite_location_reject so the Cancelled card shows it"
+  ],
+  "critical_code_review_comments": [
+    "_date_chat_card clears action_for only when a new card is posted. Any status change that skips it leaves actionable stale cards. Consider a small helper _clear_date_cards(ref_id) for all terminal transitions.",
+    "server.py is 6200+ lines; consider splitting into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_date_chat_cards.py", "/app/backend/tests/seed_iter32_ui.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created several TEST_ invites, date_bookings and vip_sched rows between admin and testuser (far-future dates). vip_avail docs have id prefix TEST_ and seed:true. Admin and testuser coins were set to 5000.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest tests/test_date_chat_cards.py (it uses Mongo + admin/testuser). seed_iter32_ui.py prints conv id and card message ids for UI tests; set localStorage gd_token and open /chats?c=<cid>. The Dates page needs a click on dates-tab-cancelled to show reasons; VIP Bookings needs vs-tab-cancelled."
+}

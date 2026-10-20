@@ -14,7 +14,7 @@ const PAGE = { invite: "/dates", booking: "/dates", vip: "/vip-bookings" };
 const ACTIONS = {
   invite: {
     invite: { choose: (id, opt) => api.post(`/invites/${id}/choose`, { idea_id: opt }), decline: (id, r) => api.post(`/invites/${id}/cancel`, null, { params: { reason: r } }) },
-    location: { accept: (id) => api.post(`/invites/${id}/location/confirm`), decline: (id) => api.post(`/invites/${id}/location/reject`) },
+    location: { accept: (id) => api.post(`/invites/${id}/location/confirm`), decline: (id, r) => api.post(`/invites/${id}/location/reject`, null, { params: { reason: r } }) },
   },
   booking: { invite: { choose: (id, opt) => api.post(`/dates/respond/${id}`, null, { params: { accept: true, selected_activity: opt } }), accept: (id) => api.post(`/dates/respond/${id}`, null, { params: { accept: true } }), decline: (id, r) => api.post(`/dates/respond/${id}`, null, { params: { accept: false, reason: r } }) } },
   vip: { invite: { accept: (id) => api.post(`/vip/schedule/bookings/${id}/confirm`), decline: (id, r) => api.post(`/vip/schedule/bookings/${id}/decline`, null, { params: { reason: r } }) } },
@@ -47,13 +47,13 @@ export default function DateChatCard({ m, onDone }) {
   const acts = ACTIONS[m.kind]?.[m.event];
   const mine = m.action_for === user.id && acts;
   const opts = m.data?.options || [];
+  const chosen = m.data?.chosen;
   const run = async (key, fn) => {
     setBusy(key);
     try { await fn(); toast.success(t("dc_done", lang)); onDone?.(); }
     catch (e) { toast.error(e.response?.data?.detail || t("failed", lang)); }
     finally { setBusy(null); }
   };
-  const declineNeedsReason = m.event === "invite";
   return (
     <div className="w-[300px] max-w-full rounded-2xl border border-rose-400/30 bg-gradient-to-br from-rose-500/10 to-amber-500/5 p-3 text-slate-100" data-testid={`chat-date-card-${m.id}`}>
       <div className="flex items-center gap-1.5 text-sm font-semibold mb-1.5"><CalendarHeart size={14} className="text-rose-300" />{m.text}</div>
@@ -65,7 +65,7 @@ export default function DateChatCard({ m, onDone }) {
             return mine && acts.choose
               ? <button key={i} type="button" onClick={() => setPick(id)} data-testid={`chat-date-option-${m.id}-${i}`}
                   className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${pick === id ? "border-emerald-400 bg-emerald-500/20 text-emerald-100" : "border-white/15 bg-white/5 hover:bg-white/10"}`}>{name}</button>
-              : <span key={i} className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300">{name}</span>;
+              : <span key={i} className={`rounded-full border px-2.5 py-1 text-[11px] ${chosen === name ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-100" : "border-white/10 bg-white/5 text-slate-300"}`}>{chosen === name && "✓ "}{name}</span>;
           })}
         </div>
       )}
@@ -77,7 +77,7 @@ export default function DateChatCard({ m, onDone }) {
             {busy === "ok" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}{t(acts.choose && opts.length && !pick ? "dc_pick_first" : "dc_accept", lang)}
           </button>
           <button type="button" disabled={!!busy} data-testid={`chat-date-decline-${m.id}`}
-            onClick={() => declineNeedsReason ? setDeclineOpen(true) : run("no", () => acts.decline(m.ref_id))}
+            onClick={() => setDeclineOpen(true)}
             className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-white/5 hover:bg-rose-500/15 px-3 py-1.5 text-xs text-rose-200 transition-colors">
             {busy === "no" ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}{t("dc_decline", lang)}
           </button>
