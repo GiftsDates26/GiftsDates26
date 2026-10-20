@@ -84,7 +84,7 @@ export default function DateChatCard({ m, onDone }) {
         </div>
       )}
       <button type="button" onClick={() => nav(PAGE[m.kind] || "/dates")} data-testid={`chat-date-open-${m.id}`} className="mt-2 text-[11px] text-sky-300 hover:text-sky-200">{t("dc_open", lang)} →</button>
-      <DeclineReasonDialog open={declineOpen} onClose={() => setDeclineOpen(false)} testid={`chat-decline-dialog-${m.id}`}
+      <DeclineReasonDialog open={declineOpen} onClose={() => setDeclineOpen(false)} testid={`chat-decline-dialog-${m.id}`} warning={m.event === "location" ? t("dc_loc_warn", lang) : undefined}
         onConfirm={(r) => run("no", () => acts.decline(m.ref_id, r))} />
     </div>
   );

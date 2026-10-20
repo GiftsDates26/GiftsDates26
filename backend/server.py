@@ -2991,7 +2991,11 @@ async def release_half(bid: str, user=Depends(get_current_user)):
 
 @api.post("/dates/cancel/{bid}")
 async def cancel_date(bid: str, user=Depends(get_current_user)):
+    res = await _cancel_date(bid, user)
     await _close_date_cards(bid)
+    return res
+
+async def _cancel_date(bid: str, user: dict):
     b = await db.date_bookings.find_one({"id": bid})
     if not b: raise HTTPException(404, "Not found")
     if user["id"] not in (b["from_id"], b["to_id"]): raise HTTPException(403, "No access")
@@ -4457,7 +4461,11 @@ async def vs_arrived(bid: str, user=Depends(get_current_user)):
 
 @api.post("/vip/schedule/bookings/{bid}/cancel")
 async def vs_cancel(bid: str, user=Depends(get_current_user)):
+    res = await _vs_cancel(bid, user)
     await _close_date_cards(bid)
+    return res
+
+async def _vs_cancel(bid: str, user: dict):
     b = await db.vip_sched.find_one({"id": bid})
     if not b:
         raise HTTPException(404, "Not found")

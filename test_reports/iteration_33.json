@@ -1,0 +1,31 @@
+{
+  "summary": "Retested the 4 fixes from iteration_32's minor issues. Backend: 15/16 pytest passed (new test_date_cards_iter33.py plus the iteration_32 regression suite). (1) A taxi request on a LOCATION_PROPOSED invite clears action_for on all of that date's cards, via _log_status. (2) POST /dates/cancel/{bid} and a requester cancelling a pending VIP request (POST /vip/schedule/bookings/{bid}/cancel) clear action_for. A stale respond call then returns 400. (3) POST /invites/{did}/location/reject?reason=X saves decline_reason=X and declined_by=recipient. With no reason it saves the default 'Meeting place rejected'. Both show in GET /invites/cancelled with declined_by_me correct for each side. (4) data.chosen is set on the original invite card for invites and for bookings. Frontend (/chats?c=, testuser): the original invite card shows the chosen chip highlighted green with '✓ TEST_Walk' and no action buttons. Decline on the location card opens chat-decline-dialog-{msgid}, and Confirm stays disabled until a reason is given. A typed reason is sent, the Approve/Decline buttons disappear, and a new 'Meeting place rejected' card shows the typed reason. No page errors. The one failure is a new issue found in code review: _close_date_cards runs before validation in cancel_date and vs_cancel.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/dates/cancel/{bid}, POST /api/vip/schedule/bookings/{bid}/cancel", "issue": "await _close_date_cards(bid) is the first line, before the 404/403/status/UNDER_REVIEW/DATE_STARTED checks. A rejected cancel (400), or any logged-in non-party user who knows the bid (403), still clears action_for. The real recipient or VIP then loses their Approve/Decline buttons while the date is still pending. Reproduced: a VIP cancel returned 400 CANNOT_CANCEL, but the VIP's card action_for went from the VIP's id to null (test_failed_cancel_should_not_clear)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Chat location Decline dialog", "issues": ["It reuses the generic 'Decline this date' / 'Keep date' copy. A location rejection also cancels the date and locks the recipient's slot, but the dialog shows no warning. Consider passing a warning prop. Minor."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_date_cards_iter33.py", "/app/backend/tests/test_date_chat_cards.py", "/app/backend/tests/seed_iter33_ui.py", "/app/test_reports/pytest/pytest_iter33.xml"],
+  "action_items": [
+    "Move await _close_date_cards(bid) in cancel_date and vs_cancel to after all validation and permission checks, just before or after the status update, so rejected or unauthorized cancels do not hide the buttons"
+  ],
+  "critical_code_review_comments": [
+    "cancel_date / vs_cancel: the side effect runs before the auth and validation checks (see the minor backend issue).",
+    "Chosen-chip matching in DateChatCard compares chosen === name. This works because the backend stores the option name, but it would break if names are not unique. Matching by id would be more robust.",
+    "server.py is still 6200+ lines and should be split into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_date_cards_iter33.py", "/app/backend/tests/seed_iter33_ui.py"],
+  "success_rate": {"backend": "94% (15/16; the one failure is the newly found pre-validation clear)", "frontend": "100%"},
+  "seed_data_creation": "Created more TEST_ invites, date_bookings and vip_sched rows between admin and testuser (far-future dates). vip_avail docs have id prefix TEST_ and seed:true. Admin and testuser coins were set to 5000. Real users anaggzr1/anagzr1 were not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && pytest test_date_cards_iter33.py test_date_chat_cards.py. test_failed_cancel_should_not_clear should pass once _close_date_cards is moved after validation. seed_iter33_ui.py prints cid plus the invite and location card message ids for UI checks; set localStorage gd_token to ut and open /chats?c=<cid>."
+}
