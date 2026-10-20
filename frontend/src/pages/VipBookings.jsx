@@ -86,6 +86,31 @@ function VipUpsell({ onGo }) {
   );
 }
 
+function RescheduleProposal({ b, who, onDone }) {
+  const { lang } = useApp();
+  const [busy, setBusy] = useState(false);
+  const p = b.reschedule_proposal;
+  const when = `${new Date(`${p.date}T00:00:00`).toLocaleDateString(lang, { weekday: "short", day: "numeric", month: "short" })} · ${p.start}–${p.end}`;
+  const answer = async (a) => {
+    setBusy(true);
+    try { await api.post(`/vip/schedule/bookings/${b.id}/reschedule/${a}`); toast.success(t(a === "accept" ? "rp_accepted" : "rp_declined", lang)); onDone?.(); }
+    catch (e) { toast.error(e.response?.data?.detail || "Error"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 flex flex-wrap items-center gap-2 text-xs" data-testid={`vs-resched-proposal-${b.id}`}>
+      <CalendarClock size={14} className="text-amber-300" />
+      <span className="text-amber-100">{t(who === "outgoing" ? "rp_vip_asks" : "rp_waiting", lang)} <b className="font-mono-num">{when}</b></span>
+      {who === "outgoing" && (
+        <div className="flex gap-2 ms-auto">
+          <Button size="sm" disabled={busy} onClick={() => answer("accept")} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 h-8" data-testid={`vs-resched-accept-${b.id}`}>{busy ? <Loader2 size={14} className="animate-spin" /> : <><Check size={14} className="me-1" />{t("rp_accept", lang)}</>}</Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => answer("decline")} className="bg-white/5 border-white/15 text-slate-300 h-8" data-testid={`vs-resched-decline-${b.id}`}>{t("rp_keep", lang)}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onReload, busyId }) {
   const { lang } = useApp();
   const card = who === "incoming" ? b.requester : b.vip_card;
@@ -129,6 +154,9 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
           <div className="text-amber-300 font-mono-num text-sm">🪙 {b.coins}</div>
           <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border ${STATUS_BADGE[b.status]}`} data-testid={`vs-status-${b.id}`}>{t(`vb_st_${b.status}`, lang)}</span>
         </div>
+        {who === "incoming" && ["pending", "confirmed"].includes(b.status) && !b.reschedule_proposal && (
+          <Button data-testid={`vs-vip-reschedule-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onReschedule(b)} className="bg-white/5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-9">{t("vb_reschedule", lang)}</Button>
+        )}
         {who === "incoming" && b.status === "pending" && (
           <>
             <Button data-testid={`vs-confirm-${b.id}`} size="sm" disabled={loading} onClick={() => onConfirm(b.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 h-9">
@@ -152,6 +180,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         )}
       </div>
     </div>
+    {b.reschedule_proposal && ["pending", "confirmed"].includes(b.status) && <RescheduleProposal b={b} who={who} onDone={onReload} />}
     {b.status === "reported" && <NoShowCase b={b} who={who} onDone={onReload} />}
     <VipPickupBlock b={b} who={who} onDone={onReload} onCancel={onCancel} />
     <VipTaxiBlock b={b} who={who} onDone={onReload} />

@@ -4649,20 +4649,13 @@ class VipRescheduleReq(BaseModel):
     start: str
     end: str
 
-@api.post("/vip/schedule/bookings/{bid}/reschedule")
-async def vs_reschedule(bid: str, req: VipRescheduleReq, user=Depends(get_current_user)):
-    b = await db.vip_sched.find_one({"id": bid})
-    if not b:
-        raise HTTPException(404, "Not found")
-    if b["requester_id"] != user["id"]:
-        raise HTTPException(403, "Only the requester can reschedule")
-    if b["status"] != "pending":
-        raise HTTPException(400, "NOT_PENDING")
-    ns, ne = _hm_to_min(req.start), _hm_to_min(req.end)
+async def _vs_check_new_time(b: dict, date: str, start: str, end: str):
+    """Validate a new time against the VIP's availability and other bookings; returns (cs, ce)."""
+    ns, ne = _hm_to_min(start), _hm_to_min(end)
     if ns == ne:
         raise HTTPException(400, "BAD_TIME")
     vip_id = b["vip_id"]
-    blocks = await db.vip_avail.find({"vip_id": vip_id, "date": req.date}, {"_id": 0}).to_list(200)
+    blocks = await db.vip_avail.find({"vip_id": vip_id, "date": date}, {"_id": 0}).to_list(200)
     ref_start = None; cs = ce = None
     for bl in blocks:
         S, E = _vs_win(bl)
@@ -4674,22 +4667,72 @@ async def vs_reschedule(bid: str, req: VipRescheduleReq, user=Depends(get_curren
             break
     if ref_start is None:
         raise HTTPException(400, "TIME_UNAVAILABLE")
-    active = await db.vip_sched.find({"vip_id": vip_id, "date": req.date, "status": {"$in": VIP_SCHED_ACTIVE}, "id": {"$ne": bid}},
+    active = await db.vip_sched.find({"vip_id": vip_id, "date": date, "status": {"$in": VIP_SCHED_ACTIVE}, "id": {"$ne": b["id"]}},
                                      {"_id": 0, "start": 1, "end": 1}).to_list(500)
     if _vs_conflict(cs, ce, active, ref_start=ref_start):
         raise HTTPException(409, "SLOT_TAKEN")
-    await _vs_extra_checks(vip_id, req.date, cs, ce)
+    await _vs_extra_checks(vip_id, date, cs, ce)
     if "hours" in b and (ce - cs) // 60 != b["hours"]:
         raise HTTPException(400, "DURATION_CHANGED")
-    now = datetime.now(timezone.utc).isoformat()
-    await db.vip_sched.update_one({"id": bid}, {"$set": {
-        "date": req.date, "start": req.start, "end": req.end,
+    return cs, ce
+
+async def _vs_apply_time(b: dict, date: str, start: str, end: str, cs: int, ce: int):
+    await db.vip_sched.update_one({"id": b["id"]}, {"$set": {
+        "date": date, "start": start, "end": end,
         "lock_start": _min_to_hm(max(0, cs - VIP_SCHED_BUFFER)), "lock_end": _min_to_hm(ce + VIP_SCHED_BUFFER),
-        "scheduled_at": f"{req.date}T{req.start}:00", "rescheduled_at": now, "reminder_24_sent": False, "reminder_1h_sent": False}})
-    await notify(vip_id, "vs_rescheduled", "Date request updated 🔁",
+        "scheduled_at": f"{date}T{start}:00", "rescheduled_at": _iso(), "reminder_24_sent": False, "reminder_1h_sent": False},
+        "$unset": {"reschedule_proposal": ""}})
+
+@api.post("/vip/schedule/bookings/{bid}/reschedule")
+async def vs_reschedule(bid: str, req: VipRescheduleReq, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Not found")
+    link = dict(link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+    if b["vip_id"] == user["id"]:
+        # the invited VIP proposes a new time — the inviter must accept before it changes
+        if b["status"] not in ("pending", "confirmed"):
+            raise HTTPException(400, "NOT_ACTIVE")
+        await _vs_check_new_time(b, req.date, req.start, req.end)
+        prop = {"date": req.date, "start": req.start, "end": req.end, "by": "vip", "at": _iso()}
+        await db.vip_sched.update_one({"id": bid}, {"$set": {"reschedule_proposal": prop}})
+        await notify(b["requester_id"], "vs_rescheduled", "New time proposed 🔁",
+                     f"{user['name']} asks to move your date to {req.date} · {req.start}–{req.end}. Accept or decline in VIP Bookings.",
+                     {"booking_id": bid}, email=True, **link)
+        return {"status": b["status"], "proposal": prop}
+    if b["requester_id"] != user["id"]:
+        raise HTTPException(403, "Only the requester or the VIP can reschedule")
+    if b["status"] != "pending":
+        raise HTTPException(400, "NOT_PENDING")
+    cs, ce = await _vs_check_new_time(b, req.date, req.start, req.end)
+    await _vs_apply_time(b, req.date, req.start, req.end, cs, ce)
+    await notify(b["vip_id"], "vs_rescheduled", "Date request updated 🔁",
                  f"{user['name']} proposed a new time: {req.date} · {req.start}–{req.end}. Confirm or decline in VIP Bookings.",
-                 {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+                 {"booking_id": bid}, email=True, **link)
     return {"status": "pending", "date": req.date, "start": req.start, "end": req.end}
+
+@api.post("/vip/schedule/bookings/{bid}/reschedule/{answer}")
+async def vs_reschedule_answer(bid: str, answer: str, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Not found")
+    if b["requester_id"] != user["id"]:
+        raise HTTPException(403, "Only the inviter can answer")
+    p = b.get("reschedule_proposal")
+    if not p or b["status"] not in ("pending", "confirmed"):
+        raise HTTPException(400, "NO_PROPOSAL")
+    if answer == "accept":
+        cs, ce = await _vs_check_new_time(b, p["date"], p["start"], p["end"])
+        await _vs_apply_time(b, p["date"], p["start"], p["end"], cs, ce)
+        await notify(b["vip_id"], "vs_rescheduled", "New time accepted ✅", f"{user['name']} accepted the new time: {p['date']} · {p['start']}–{p['end']}.",
+                     {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+        return {"ok": True, "date": p["date"], "start": p["start"], "end": p["end"]}
+    if answer != "decline":
+        raise HTTPException(400, "Unknown answer")
+    await db.vip_sched.update_one({"id": bid}, {"$unset": {"reschedule_proposal": ""}})
+    await notify(b["vip_id"], "vs_rescheduled", "New time declined", f"{user['name']} kept the original time: {b['date']} · {b['start']}–{b['end']}.",
+                 {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+    return {"ok": True}
 
 # ---- Background loop: 30-min reminders + auto-complete ----
 def _vs_start_dt(b: dict):
